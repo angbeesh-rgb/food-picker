@@ -142,6 +142,36 @@ select{padding:10px 12px;border-radius:10px;border:1.5px solid #FCE7F3;backgroun
 textarea{width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid #FCE7F3;background:#FFF9FB;font-size:13px;color:#1a1a1a;resize:none;min-height:70px;font-family:inherit}
 textarea::placeholder{color:#bbb}
 </style>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, runTransaction, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  databaseURL: "https://food-picker-73e4a-default-rtdb.asia-southeast1.firebasedatabase.app/"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+// 전역 함수로 노출
+window.fbVoteUp = async function(menuName) {
+  const menuRef = ref(db, 'votes/' + menuName.replace(/[.#$\[\]]/g, '_'));
+  await runTransaction(menuRef, (current) => (current || 0) + 1);
+};
+
+window.fbGetVotes = function(callback) {
+  const votesRef = ref(db, 'votes');
+  onValue(votesRef, (snapshot) => {
+    callback(snapshot.val() || {});
+  }, { onlyOnce: true });
+};
+
+window.fbListenVotes = function(callback) {
+  const votesRef = ref(db, 'votes');
+  onValue(votesRef, (snapshot) => {
+    callback(snapshot.val() || {});
+  });
+};
+</script>
 </head>
 <body>
 <div class="app">
@@ -415,7 +445,7 @@ function vote(up){
     document.getElementById('voteUp').classList.add('active');document.getElementById('voteDown').classList.remove('active');
     fb.className='vfb good';fb.textContent='👍 좋아요! 인기 메뉴로 집계될게요 😊';
     if(dw[curMenu]){dw[curMenu]=Math.max(0,dw[curMenu]-1);if(dw[curMenu]===0)delete dw[curMenu];}
-    const lv=getLV();lv[curMenu]=(lv[curMenu]||0)+1;saveLV(lv);
+    const lv=getLV();lv[curMenu]=(lv[curMenu]||0)+1;saveLV(lv);if(window.fbVoteUp)window.fbVoteUp(curMenu);
     meals.unshift({name:curMenu,cal:(window.curMenuData?.cal||0),type:'👍 추천메뉴',date:todayKey(),ts:Date.now()});
     renderLog();
     saveLS();
@@ -434,8 +464,21 @@ function renderDL(){
 }
 function clearDislikes(){dw={};saveLS();renderDL();}
 function renderPop(){
-  const lv=getLV();const now=new Date();
+  const now=new Date();
   document.getElementById('popTime').textContent=now.toLocaleDateString('ko-KR',{month:'long',day:'numeric'})+' '+now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})+' 기준';
+  if(window.fbGetVotes){
+    window.fbGetVotes(function(fbData){
+      const localLv=getLV();
+      const merged={};
+      Object.entries(fbData).forEach(([k,v])=>{merged[k.replace(/_/g,' ')]=(merged[k.replace(/_/g,' ')]||0)+v;});
+      Object.entries(localLv).forEach(([k,v])=>{merged[k]=(merged[k]||0)+v;});
+      _renderPopData(merged);
+    });
+  } else {
+    _renderPopData(getLV());
+  }
+}
+function _renderPopData(lv){const now=new Date();
   const s=Object.entries(lv).sort((a,b)=>b[1]-a[1]).slice(0,10);const list=document.getElementById('rankList');
   if(!s.length){list.innerHTML='<div class="elog">아직 추천 데이터가 없어요.<br>추천탭에서 👍 버튼을 눌러봐요!</div>';document.getElementById('popRec').innerHTML='아직 데이터가 없어요.';return;}
   const mx=s[0][1];const rc=i=>i===0?'rk1':i===1?'rk2':i===2?'rk3':'rko';const md=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1;
