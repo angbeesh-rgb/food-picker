@@ -605,7 +605,7 @@ async function fetchNearbyMenuRestaurants(menuName){
     let finalData = null;
 
     for(const q of queries){
-      const res = await fetch(`/.netlify/functions/kakao?type=menu&query=${encodeURIComponent(q)}&lat=${userLat}&lng=${userLng}&radius=${searchRadius}`);
+      const res = await fetch(`https://kakao-proxy.angbeesh.workers.dev/?query=${encodeURIComponent(q)}&x=${userLng}&y=${userLat}&radius=${searchRadius}`);
       const data = await res.json();
       if(data.documents && data.documents.length > 0){
         finalData = data;
@@ -615,7 +615,7 @@ async function fetchNearbyMenuRestaurants(menuName){
 
     // 반경 내 없으면 반경 3배로 재시도 (메뉴명으로만)
     if(!finalData){
-      const res = await fetch(`/.netlify/functions/kakao?type=menu&query=${encodeURIComponent(cleanName)}&lat=${userLat}&lng=${userLng}&radius=${searchRadius*3}`);
+      const res = await fetch(`https://kakao-proxy.angbeesh.workers.dev/?query=${encodeURIComponent(cleanName)}&x=${userLng}&y=${userLat}&radius=${searchRadius*3}`);
       const data = await res.json();
       if(data.documents && data.documents.length > 0) finalData = data;
     }
