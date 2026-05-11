@@ -374,7 +374,16 @@ const travelDB={서울:{area:'수도권',items:[{n:'광장시장 빈대떡',s:1}
 // localStorage 기반 상태
 let mode='normal',meals=[],rcps=[],ings=[],steps=[],selReg='서울',curMenu='',dw={};
 
+function resetVotesIfNewDay(){
+  const lastDate = localStorage.getItem('mwomogji_last_vote_date');
+  const today = todayKey();
+  if(lastDate !== today){
+    localStorage.setItem('mwomogji_votes_today', '0');
+    localStorage.setItem('mwomogji_last_vote_date', today);
+  }
+}
 function loadLS(){
+  resetVotesIfNewDay();
   try{
     const s=JSON.parse(localStorage.getItem('mwomogji_state')||'{}');
     if(s.meals)meals=s.meals;
@@ -445,10 +454,20 @@ function vote(up){
     document.getElementById('voteUp').classList.add('active');document.getElementById('voteDown').classList.remove('active');
     fb.className='vfb good';fb.textContent='👍 좋아요! 인기 메뉴로 집계될게요 😊';
     if(dw[curMenu]){dw[curMenu]=Math.max(0,dw[curMenu]-1);if(dw[curMenu]===0)delete dw[curMenu];}
-    if(window.fbVoteUp)window.fbVoteUp(curMenu);
+    // 식단일기는 항상 등록
     meals.unshift({name:curMenu,cal:(window.curMenuData?.cal||0),type:'👍 추천메뉴',date:todayKey(),ts:Date.now()});
     renderLog();
     saveLS();
+    // 인기 집계는 하루 5번 제한
+    const todayVotes = JSON.parse(localStorage.getItem('mwomogji_votes_today') || '0');
+    if(todayVotes >= 5){
+      fb.textContent='👍 식단에 추가됐어요! (오늘 인기 집계 횟수 초과)';
+    } else {
+      if(window.fbVoteUp)window.fbVoteUp(curMenu);
+      localStorage.setItem('mwomogji_votes_today', JSON.stringify(todayVotes + 1));
+      const remain = 4 - todayVotes;
+      fb.textContent=remain > 0 ? \`👍 좋아요! 인기 메뉴로 집계될게요 😊 (오늘 \${remain}번 남음)\` : '👍 좋아요! 오늘 마지막 집계예요 😊';
+    }
   }else{
     document.getElementById('voteDown').classList.add('active');document.getElementById('voteUp').classList.remove('active');
     dw[curMenu]=Math.min(5,(dw[curMenu]||0)+1);
