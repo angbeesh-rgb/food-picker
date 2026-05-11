@@ -374,6 +374,7 @@ const travelDB={서울:{area:'수도권',items:[{n:'광장시장 빈대떡',s:1}
 // localStorage 기반 상태
 let mode='normal',meals=[],rcps=[],ings=[],steps=[],selReg='서울',curMenu='',dw={};
 
+function todayKey(){return new Date().toISOString().slice(0,10);}
 function resetVotesIfNewDay(){
   const lastDate = localStorage.getItem('mwomogji_last_vote_date');
   const today = todayKey();
@@ -395,7 +396,6 @@ function loadLS(){
 function saveLS(){
   try{localStorage.setItem('mwomogji_state',JSON.stringify({meals,rcps,dw,mode}));}catch(e){}
 }
-function todayKey(){return new Date().toISOString().slice(0,10);}
 function getLV(){
   try{
     const raw=JSON.parse(localStorage.getItem('mwomogji_likes')||'{}');
