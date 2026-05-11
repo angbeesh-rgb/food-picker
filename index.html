@@ -143,34 +143,61 @@ textarea{width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid #FCE
 textarea::placeholder{color:#bbb}
 </style>
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, runTransaction, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+try {
+  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
+  const { getDatabase, ref, runTransaction, onValue } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
 
-const firebaseConfig = {
-  databaseURL: "https://food-picker-73e4a-default-rtdb.asia-southeast1.firebasedatabase.app/"
-};
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
+  const firebaseConfig = {
+    databaseURL: "https://food-picker-73e4a-default-rtdb.asia-southeast1.firebasedatabase.app/"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
 
-// 전역 함수로 노출
-window.fbVoteUp = async function(menuName) {
-  const menuRef = ref(db, 'votes/' + menuName.replace(/[.#$\[\]]/g, '_'));
-  await runTransaction(menuRef, (current) => (current || 0) + 1);
-};
+  // 전역 함수로 노출
+  window.fbVoteUp = async function(menuName) {
+    try {
+      const menuRef = ref(db, 'votes/' + menuName.replace(/[.#$\[\]]/g, '_'));
+      await runTransaction(menuRef, (current) => (current || 0) + 1);
+    } catch(e) {
+      console.error('[fbVoteUp] Firebase 쓰기 실패:', e);
+    }
+  };
 
-window.fbGetVotes = function(callback) {
-  const votesRef = ref(db, 'votes');
-  onValue(votesRef, (snapshot) => {
-    callback(snapshot.val() || {});
-  }, { onlyOnce: true });
-};
+  window.fbGetVotes = function(callback) {
+    try {
+      const votesRef = ref(db, 'votes');
+      onValue(votesRef, (snapshot) => {
+        callback(snapshot.val() || {});
+      }, { onlyOnce: true });
+    } catch(e) {
+      console.error('[fbGetVotes] Firebase 읽기 실패:', e);
+      callback({});
+    }
+  };
 
-window.fbListenVotes = function(callback) {
-  const votesRef = ref(db, 'votes');
-  onValue(votesRef, (snapshot) => {
-    callback(snapshot.val() || {});
-  });
-};
+  window.fbListenVotes = function(callback) {
+    try {
+      const votesRef = ref(db, 'votes');
+      onValue(votesRef, (snapshot) => {
+        callback(snapshot.val() || {});
+      });
+    } catch(e) {
+      console.error('[fbListenVotes] Firebase 구독 실패:', e);
+    }
+  };
+
+  // 로드 완료 신호
+  window.fbReady = true;
+  console.log('✅ Firebase 로드 완료');
+  window.dispatchEvent(new Event('firebase-ready'));
+} catch(e) {
+  console.error('❌ Firebase 로드 실패:', e);
+  // Firebase 없이도 앱이 동작하도록 폴백
+  window.fbVoteUp = function() {};
+  window.fbGetVotes = function(cb) { cb({}); };
+  window.fbListenVotes = function() {};
+  window.fbReady = false;
+}
 </script>
 </head>
 <body>
@@ -458,13 +485,19 @@ function vote(up){
     meals.unshift({name:curMenu,cal:(window.curMenuData?.cal||0),type:'👍 추천메뉴',date:todayKey(),ts:Date.now()});
     renderLog();
     saveLS();
+    // 로컬 카운트 (Firebase 폴백용)
+    const lv=getLV();lv[curMenu]=(lv[curMenu]||0)+1;saveLV(lv);
     // 인기 집계는 하루 5번 제한
-    const todayVotes = JSON.parse(localStorage.getItem('mwomogji_votes_today') || '0');
+    const todayVotes = parseInt(localStorage.getItem('mwomogji_votes_today')||'0',10);
     if(todayVotes >= 5){
       fb.textContent='👍 식단에 추가됐어요! (오늘 인기 집계 횟수 초과)';
     } else {
-      if(window.fbVoteUp)window.fbVoteUp(curMenu);
-      localStorage.setItem('mwomogji_votes_today', JSON.stringify(todayVotes + 1));
+      if(typeof window.fbVoteUp === 'function'){
+        try { window.fbVoteUp(curMenu); }catch(e){ console.error('[vote] Firebase 집계 실패:', e); }
+      } else {
+        console.warn('[vote] Firebase 미로드, 로컬에만 집계됨');
+      }
+      localStorage.setItem('mwomogji_votes_today', String(todayVotes + 1));
       const remain = 4 - todayVotes;
       fb.textContent=remain > 0 ? `👍 좋아요! 인기 메뉴로 집계될게요 😊 (오늘 ${remain}번 남음)` : '👍 좋아요! 오늘 마지막 집계예요 😊';
     }
@@ -485,13 +518,19 @@ function clearDislikes(){dw={};saveLS();renderDL();}
 function renderPop(){
   const now=new Date();
   document.getElementById('popTime').textContent=now.toLocaleDateString('ko-KR',{month:'long',day:'numeric'})+' '+now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})+' 기준';
-  if(window.fbGetVotes){
-    window.fbGetVotes(function(fbData){
-      const merged={};
-      Object.entries(fbData).forEach(([k,v])=>{merged[k.replace(/_/g,' ')]=(merged[k.replace(/_/g,' ')]||0)+v;});
-      _renderPopData(merged);
-    });
+  if(typeof window.fbGetVotes === 'function'){
+    try {
+      window.fbGetVotes(function(fbData){
+        const merged={};
+        Object.entries(fbData||{}).forEach(([k,v])=>{merged[k.replace(/_/g,' ')]=(merged[k.replace(/_/g,' ')]||0)+v;});
+        _renderPopData(merged);
+      });
+    } catch(e){
+      console.error('[renderPop] fbGetVotes 호출 실패:', e);
+      _renderPopData(getLV());
+    }
   } else {
+    console.warn('[renderPop] Firebase 미로드, 로컬 데이터로 대체');
     _renderPopData(getLV());
   }
 }
@@ -543,7 +582,7 @@ const todayMeals=meals.filter(m=>(m.date||today)===today);
 document.getElementById('todayCal').textContent=todayMeals.reduce((s,m)=>s+m.cal,0).toLocaleString();
 document.getElementById('mealCount').textContent=todayMeals.length;
 }
-function addMeal(){const n=document.getElementById('addMealName').value.trim(),t=document.getElementById('mealType').value;if(!n)return;meals.unshift({name:n,cal:0,type:t,date:todayKey(),ts:Date.now(),date:todayKey(),ts:Date.now()});document.getElementById('addMealName').value='';saveLS();renderLog();}
+function addMeal(){const n=document.getElementById('addMealName').value.trim(),t=document.getElementById('mealType').value;if(!n)return;meals.unshift({name:n,cal:0,type:t,date:todayKey(),ts:Date.now()});document.getElementById('addMealName').value='';saveLS();renderLog();}
 function delM(i){meals.splice(i,1);saveLS();renderLog();}
 function rate(n){document.querySelectorAll('.star').forEach((s,i)=>s.classList.toggle('lit',i<n));}
 function buildReg(){const areas=['수도권','전라도','경상도','강원도','충청도','제주'];let html='';areas.forEach(area=>{const rs=Object.keys(travelDB).filter(r=>travelDB[r].area===area);if(!rs.length)return;html+=`<div style="font-size:11px;font-weight:700;color:#aaa;margin-top:8px;letter-spacing:0.5px">${area}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0 4px">`;rs.forEach(r=>html+=`<button class="rgbtn${r===selReg?' active':''}" onclick="pickReg('${r}')">${r}</button>`);html+='</div>';});document.getElementById('regionGrid').innerHTML=html;updT(selReg);}
@@ -707,12 +746,17 @@ async function fetchNearbyMenuRestaurants(menuName){
 // 서비스 워커 등록
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+    navigator.serviceWorker.register('./sw.js').catch(err=>console.warn('[SW] 등록 실패:',err));
   });
 }
 
-loadLS();
-try{
+// 전역 에러 캐치
+window.addEventListener('error', e=>{
+  console.error('[전역 에러]', e.message, 'at', e.filename+':'+e.lineno);
+});
+
+try {
+  loadLS();
   const r=localStorage.getItem('mwomogji_radius');
   if(r){
     searchRadius=parseInt(r);
@@ -724,23 +768,35 @@ try{
   }
   // 메뉴우선 상태 복원
   if(localStorage.getItem('mwomogji_menufirst')==='1'){
-    document.getElementById('toggleMenuFirst').checked=true;
-    menuFirstMode=true;
-    getLocation().then(()=>{
-      const status=document.getElementById('locationStatus');
-      status.style.display='block';
-      status.style.background='#F0FDF4';
-      status.style.border='1px solid #BBF7D0';
-      status.style.color='#166534';
-      status.textContent='✅ 위치 확인 완료! 메뉴 추천 시 가까운 식당을 보여드려요.';
-    }).catch(()=>{
-      menuFirstMode=false;
-      document.getElementById('toggleMenuFirst').checked=false;
-    });
+    const toggleEl=document.getElementById('toggleMenuFirst');
+    if(toggleEl){
+      toggleEl.checked=true;
+      menuFirstMode=true;
+      getLocation().then(()=>{
+        const status=document.getElementById('locationStatus');
+        if(!status)return;
+        status.style.display='block';
+        status.style.background='#F0FDF4';
+        status.style.border='1px solid #BBF7D0';
+        status.style.color='#166534';
+        status.textContent='✅ 위치 확인 완료! 메뉴 추천 시 가까운 식당을 보여드려요.';
+      }).catch(()=>{
+        menuFirstMode=false;
+        const t=document.getElementById('toggleMenuFirst');
+        if(t)t.checked=false;
+      });
+    }
   }
-}catch(e){}
-if(mode!=='normal'){document.querySelectorAll('.mbtn').forEach(b=>b.classList.remove('sel'));const mb=document.getElementById('mode-'+mode);if(mb)mb.classList.add('sel');}
-recommend();renderLog();renderRcps();
+  if(mode!=='normal'){
+    document.querySelectorAll('.mbtn').forEach(b=>b.classList.remove('sel'));
+    const mb=document.getElementById('mode-'+mode);
+    if(mb)mb.classList.add('sel');
+  }
+  recommend();renderLog();renderRcps();
+  console.log('✅ 앱 초기화 완료');
+} catch(e){
+  console.error('❌ 앱 초기화 실패:', e);
+}
 </script>
 </body>
 </html>
