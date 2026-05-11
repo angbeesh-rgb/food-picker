@@ -445,7 +445,7 @@ function vote(up){
     document.getElementById('voteUp').classList.add('active');document.getElementById('voteDown').classList.remove('active');
     fb.className='vfb good';fb.textContent='👍 좋아요! 인기 메뉴로 집계될게요 😊';
     if(dw[curMenu]){dw[curMenu]=Math.max(0,dw[curMenu]-1);if(dw[curMenu]===0)delete dw[curMenu];}
-    const lv=getLV();lv[curMenu]=(lv[curMenu]||0)+1;saveLV(lv);if(window.fbVoteUp)window.fbVoteUp(curMenu);
+    if(window.fbVoteUp)window.fbVoteUp(curMenu);
     meals.unshift({name:curMenu,cal:(window.curMenuData?.cal||0),type:'👍 추천메뉴',date:todayKey(),ts:Date.now()});
     renderLog();
     saveLS();
@@ -468,10 +468,8 @@ function renderPop(){
   document.getElementById('popTime').textContent=now.toLocaleDateString('ko-KR',{month:'long',day:'numeric'})+' '+now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})+' 기준';
   if(window.fbGetVotes){
     window.fbGetVotes(function(fbData){
-      const localLv=getLV();
       const merged={};
       Object.entries(fbData).forEach(([k,v])=>{merged[k.replace(/_/g,' ')]=(merged[k.replace(/_/g,' ')]||0)+v;});
-      Object.entries(localLv).forEach(([k,v])=>{merged[k]=(merged[k]||0)+v;});
       _renderPopData(merged);
     });
   } else {
