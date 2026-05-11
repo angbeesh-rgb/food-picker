@@ -466,7 +466,7 @@ function vote(up){
       if(window.fbVoteUp)window.fbVoteUp(curMenu);
       localStorage.setItem('mwomogji_votes_today', JSON.stringify(todayVotes + 1));
       const remain = 4 - todayVotes;
-      fb.textContent=remain > 0 ? \`👍 좋아요! 인기 메뉴로 집계될게요 😊 (오늘 \${remain}번 남음)\` : '👍 좋아요! 오늘 마지막 집계예요 😊';
+      fb.textContent=remain > 0 ? `👍 좋아요! 인기 메뉴로 집계될게요 😊 (오늘 ${remain}번 남음)` : '👍 좋아요! 오늘 마지막 집계예요 😊';
     }
   }else{
     document.getElementById('voteDown').classList.add('active');document.getElementById('voteUp').classList.remove('active');
