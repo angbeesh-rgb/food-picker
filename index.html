@@ -4,7 +4,9 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <meta name="theme-color" content="#F9A8D4"/>
+<meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍱</text></svg>"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="apple-mobile-web-app-title" content="뭐먹지"/>
 <title>오늘 뭐먹지?</title>
@@ -884,7 +886,6 @@ function wRand(all){
 }
 function recommend(){
   const all=getMenus();if(!all.length)return;
-  updateEnvData(); // 시간/요일 갱신
   
   // 🧠 스마트 추천 (망각 곡선 + 컨텍스트 가중치)
   const result=smartRecommend(all);
@@ -1560,12 +1561,12 @@ try {
     if(mb)mb.classList.add('sel');
   }
   
-  // 🧠 스마트 추천 환경 데이터 초기화
+  // 🧠 스마트 추천 환경 데이터 초기화 (1회만 호출)
   updateEnvData();
   // 날씨는 비동기로 가져옴 (실패해도 앱 작동)
   fetchWeather().then(()=>{
-    // 날씨 정보 받은 후 다시 추천 (더 정확)
-    recommend();
+    // 날씨 정보 받은 후 환경 데이터만 갱신 (recommend 중복 호출 방지)
+    updateEnvData();
   }).catch(e=>console.warn('[weather] 초기 로드 실패:',e));
   
   // 🔒 관리자 모드 체크 (URL 파라미터)
