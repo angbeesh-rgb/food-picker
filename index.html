@@ -44,6 +44,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .vfb{font-size:11px;margin-top:8px;padding:6px 10px;border-radius:8px;display:none}
 .vfb.good{background:#D1FAE5;color:#065F46;display:block}
 .vfb.bad{background:#FEE2E2;color:#991B1B;display:block}
+/* 🧠 스마트 추천 이유 박스 */
+.rec-reason{background:linear-gradient(135deg,#FEF3C7 0%,#FDE68A 100%);border-radius:12px;padding:12px 14px;margin:10px 0;border:1.5px solid #F59E0B;animation:fadeIn 0.4s ease-out}
+.rec-reason .rr-title{font-size:13px;font-weight:700;color:#78350F;margin-bottom:8px}
+.rec-reason .rr-item{font-size:12px;color:#92400E;padding:4px 0;line-height:1.5}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
 /* 대안 메뉴 */
 .arow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .ac{background:#fff;border:1.5px solid #FCE7F3;border-radius:12px;padding:10px;cursor:pointer;transition:all 0.2s;text-align:center}
@@ -221,6 +226,8 @@ try {
       <div class="rcal" id="recCal"></div>
       <div class="vfb" id="voteFb"></div>
     </div>
+    <!-- 🧠 스마트 추천 이유 -->
+    <div id="recReason" class="rec-reason" style="display:none"></div>
     <!-- 메뉴우선: 가까운 식당 결과 -->
     <div id="menuFirstWrap" style="display:none;margin-bottom:10px">
       <div style="font-size:13px;font-weight:700;color:#1a1a1a;margin-bottom:8px">🍽️ 가까운 식당</div>
@@ -459,6 +466,233 @@ function getMenus(){
   c.forEach(x=>{if(db[x])all=all.concat(db[x]);});
   if(!all.length)Object.values(DB.normal).forEach(a=>all=all.concat(a));return all;
 }
+
+// ───────────────────────────────────────
+// 🧠 스마트 추천 시스템 (v21 신규)
+// ───────────────────────────────────────
+
+// 망각 곡선: 음식별 재추천 주기 (일 단위)
+const RECOMMEND_CYCLE={
+  // 한식
+  '삼겹살':3,'갈비탕':4,'갈비찜':5,'족발 + 막국수':4,'곱창구이':5,'막창구이':5,'설렁탕 + 수육':4,
+  '김치찌개 + 공깃밥':2,'된장찌개 + 공깃밥':2,'순두부찌개':2,'청국장찌개':3,'미역국 + 잡곡밥':2,
+  '비빔밥':2,'불고기 덮밥':2,'제육볶음 + 밥':3,'낙지볶음 + 밥':3,'잡채 + 공기밥':3,
+  '냉면':2,'칼국수':2,'콩나물국밥':2,'육개장':3,'곰탕':4,'삼계탕':5,'닭볶음탕':3,'닭한마리':4,
+  '낙곱새':5,'부대찌개':4,'양념 게장':5,'전복죽 + 전복구이':5,'꼼장어 구이':5,'뼈다귀 해장국':4,
+  '등갈비 찜':5,'해물 파전 + 막걸리':4,'쌈밥':2,'해물 뚝배기':3,'돼지 두루치기':3,
+  '치킨':4,'떡볶이 + 순대 + 튀김':4,
+  // 양식
+  '햄버거 + 감자튀김':4,'피자':4,'마르게리따 피자':4,'시카고 딥디쉬 피자':5,'트러플 버거':5,
+  '까르보나라 파스타':3,'뇨끼 크림파스타':3,'미트볼 파스타':3,'해물 스파게티':3,'봉골레 스파게티':3,
+  '연어 크림파스타':3,'트러플 파스타':4,'쉬림프 알프레도':3,'트러플 리조또':4,
+  '스테이크':5,'티본 스테이크':6,'프라임 립':6,'비프 웰링턴':6,'포크 립스':5,
+  '치킨 샐러드':1,'그릭 요거트':1,'아보카도 토스트':1,'에그 베네딕트':3,
+  // 중식
+  '짜장면':3,'짬뽕':3,'짬뽕 + 탕수육':4,'탕수육':4,'마라탕':3,'마라샹궈':4,'훠궈':5,
+  '깐풍기':3,'고추잡채':3,'팔보채':4,'딤섬':3,'북경오리':5,'동파육':5,
+  // 일식
+  '연어 초밥':3,'특상 초밥':4,'모둠회':3,'모둠회 대':4,'라멘':3,'쇼유 라멘':3,'돈코츠 라멘':3,
+  '돈카츠':3,'규카츠':4,'장어덮밥':4,'장어 덮밥':4,'스키야키':5,'샤브샤브':4,'오마카세':6,
+  // 다이어트
+  '닭가슴살 샐러드':1,'미역 샐러드':1,'그릭 요거트':1,'채소 수프':1,'오이냉국':1,'미소 된장국 + 현미밥':1,
+  '두부구이':1,'연두부 샐러드':1,'야채 된장국':1
+};
+
+// 음식 카테고리 자동 감지 (RECOMMEND_CYCLE에 없을 때 기본값)
+function getDefaultCycle(menu){
+  const tags=menu.tags||[];
+  if(tags.includes('고급')||tags.includes('보양')) return 4;
+  if(tags.includes('튀김')||tags.includes('바삭')) return 3;
+  if(tags.includes('국물')||tags.includes('찌개')) return 2;
+  if(tags.includes('샐러드')||tags.includes('저칼로리')) return 1;
+  return 2; // 기본값
+}
+
+// 마지막으로 먹은 시점 (식단일기 기반)
+function getDaysSinceEaten(menuName){
+  const eaten=meals.find(m=>m.name===menuName);
+  if(!eaten) return 999; // 안 먹었으면 무한
+  const days=(Date.now()-eaten.ts)/(1000*60*60*24);
+  return days;
+}
+
+// 망각 곡선 점수 (0~1, 1이 최고)
+function memoryCurveScore(menu){
+  const cycle=RECOMMEND_CYCLE[menu.name]||getDefaultCycle(menu);
+  const daysSince=getDaysSinceEaten(menu.name);
+  if(daysSince>=cycle) return 1.0;        // 주기 지났음 → 추천 가능
+  if(daysSince<cycle*0.3) return 0.0;     // 너무 최근 → 추천 안 함
+  return daysSince/cycle;                  // 점진적 회복
+}
+
+// 환경 데이터 (날씨, 시간 등)
+let envData={weather:null,temp:null,hour:null,dayOfWeek:null};
+function updateEnvData(){
+  const now=new Date();
+  envData.hour=now.getHours();
+  envData.dayOfWeek=now.getDay(); // 0=일, 1=월, ...
+}
+
+// 날씨 가져오기 (Open-Meteo - 무료, API 키 불필요!)
+async function fetchWeather(){
+  try{
+    const lat=window.userLat||37.5665;  // 서울 기본
+    const lng=window.userLng||126.9780;
+    const res=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code&timezone=auto`);
+    const data=await res.json();
+    envData.temp=data.current?.temperature_2m;
+    envData.weather=mapWeatherCode(data.current?.weather_code);
+    console.log('🌤️ 날씨 업데이트:',envData);
+  }catch(e){
+    console.warn('[weather] 날씨 정보 가져오기 실패:',e);
+  }
+}
+
+// Open-Meteo 날씨 코드 → 카테고리 매핑
+function mapWeatherCode(code){
+  if(code===undefined||code===null) return null;
+  if([0,1].includes(code)) return 'clear';        // 맑음
+  if([2,3].includes(code)) return 'cloudy';       // 흐림
+  if([45,48].includes(code)) return 'fog';        // 안개
+  if([51,53,55,61,63,65,80,81,82].includes(code)) return 'rain';  // 비
+  if([66,67,71,73,75,77,85,86].includes(code)) return 'snow';     // 눈
+  if([95,96,99].includes(code)) return 'storm';                    // 폭풍
+  return 'clear';
+}
+
+// 다중 변수 가중치 점수 계산
+function calculateContextScore(menu){
+  let score=0;
+  const tags=menu.tags||[];
+  const reasons=[]; // 추천 이유 추적
+  
+  // 1. 날씨 가중치
+  if(envData.weather==='rain'||envData.weather==='snow'){
+    if(tags.includes('국물')||tags.includes('따뜻')||tags.includes('찌개')||tags.includes('전골')){
+      score+=30;reasons.push('🌧️ 비/눈 오는 날엔 따뜻한 국물');
+    }
+    if(tags.includes('전')||menu.name.includes('파전')||menu.name.includes('부침개')){
+      score+=20;reasons.push('🌧️ 비 오는 날엔 파전');
+    }
+  }
+  if(envData.weather==='clear'&&envData.temp&&envData.temp>25){
+    if(tags.includes('시원')||tags.includes('여름')||menu.name.includes('냉')){
+      score+=25;reasons.push('☀️ 더운 날엔 시원한 음식');
+    }
+  }
+  if(envData.temp!==null){
+    if(envData.temp<5&&(tags.includes('따뜻')||tags.includes('보양'))){
+      score+=25;reasons.push('🥶 추운 날엔 따뜻한 보양식');
+    }
+    if(envData.temp>30&&menu.name.includes('냉')){
+      score+=20;reasons.push('🔥 무더위엔 차가운 음식');
+    }
+  }
+  
+  // 2. 요일 가중치
+  if(envData.dayOfWeek===1){ // 월요일
+    if(tags.includes('매운맛')){
+      score+=15;reasons.push('😤 월요병엔 매운맛으로 스트레스 해소');
+    }
+  }
+  if(envData.dayOfWeek===5){ // 금요일
+    if(tags.includes('행복')||tags.includes('고급')||mode==='happy'){
+      score+=15;reasons.push('🎉 불금엔 맛있는 음식');
+    }
+  }
+  if(envData.dayOfWeek===0||envData.dayOfWeek===6){ // 주말
+    if(tags.includes('보양')||tags.includes('가족')||tags.includes('푸짐')){
+      score+=10;reasons.push('🏠 주말엔 푸짐한 한 끼');
+    }
+  }
+  
+  // 3. 시간대 가중치
+  if(envData.hour>=6&&envData.hour<10){ // 아침
+    if(tags.includes('아침')||tags.includes('브런치')||tags.includes('가벼움')||tags.includes('담백')){
+      score+=20;reasons.push('🌅 아침엔 가벼운 식사');
+    }
+    if(tags.includes('매운맛')||tags.includes('자극')){
+      score-=15;reasons.push('🌅 아침엔 자극적인 음식 피하기');
+    }
+  }
+  if(envData.hour>=11&&envData.hour<14){ // 점심
+    if(tags.includes('정식')||tags.includes('밥')||tags.includes('든든')){
+      score+=10;reasons.push('☀️ 점심엔 든든하게');
+    }
+  }
+  if(envData.hour>=17&&envData.hour<21){ // 저녁
+    if(tags.includes('고기')||tags.includes('전골')||tags.includes('회식')){
+      score+=10;reasons.push('🌆 저녁엔 술 한잔과 함께');
+    }
+  }
+  if(envData.hour>=21||envData.hour<6){ // 야식
+    if(tags.includes('야식')||menu.name.includes('치킨')||menu.name.includes('라면')){
+      score+=15;reasons.push('🌙 야식 타임!');
+    }
+    if(tags.includes('저칼로리')||mode==='diet'){
+      score+=10;reasons.push('🌙 늦은 시간엔 가볍게');
+    }
+  }
+  
+  // 4. 어제 먹은 음식 회피
+  const yesterday=meals.find(m=>{
+    const days=(Date.now()-m.ts)/(1000*60*60*24);
+    return days>=0.5&&days<1.5;
+  });
+  if(yesterday){
+    // 같은 메뉴 강력 회피
+    if(yesterday.name===menu.name){
+      score-=50;reasons.push('⏭️ 어제 먹은 메뉴');
+    }
+    // 비슷한 카테고리 회피
+    const yesterdayTags=yesterday.tags||[];
+    if(yesterdayTags.includes('튀김')&&tags.includes('튀김')){
+      score-=30;reasons.push('⏭️ 어제도 튀김류였어요');
+    }
+    if(yesterdayTags.includes('고기')&&tags.includes('고기')&&!tags.includes('저지방')){
+      score-=20;reasons.push('⏭️ 어제도 기름진 음식');
+    }
+    if(yesterdayTags.includes('매운맛')&&tags.includes('매운맛')){
+      score-=15;reasons.push('⏭️ 어제도 매운 음식');
+    }
+  }
+  
+  return {score,reasons};
+}
+
+// 스마트 추천: 망각 곡선 + 컨텍스트 가중치 + 기존 dw(비추천)
+function smartRecommend(all){
+  const candidates=all.map(menu=>{
+    const memScore=memoryCurveScore(menu);          // 0~1
+    const dwPenalty=dw[menu.name]||0;                // 0~5
+    const dwWeight=dwPenalty>=5?0:Math.pow(0.5,dwPenalty);
+    const ctx=calculateContextScore(menu);
+    
+    // 최종 점수 = 기본 50점 + 컨텍스트 점수 + 망각 곡선 보너스 - 비추천 페널티
+    const totalScore=(50+ctx.score)*memScore*dwWeight;
+    
+    return {menu,score:totalScore,reasons:ctx.reasons,memScore};
+  });
+  
+  // 점수가 0 이상인 후보만
+  const valid=candidates.filter(c=>c.score>0);
+  if(!valid.length){
+    // 폴백: 기존 wRand 사용
+    return {menu:wRand(all),reasons:['🎲 랜덤 추천']};
+  }
+  
+  // 가중치 기반 추첨 (상위 후보일수록 뽑힐 확률 높음)
+  valid.sort((a,b)=>b.score-a.score);
+  const top=valid.slice(0,Math.min(10,valid.length)); // 상위 10개 중 선택
+  const tot=top.reduce((s,x)=>s+x.score,0);
+  let r=Math.random()*tot;
+  for(const c of top){
+    r-=c.score;
+    if(r<=0) return {menu:c.menu,reasons:c.reasons,score:c.score};
+  }
+  return {menu:top[0].menu,reasons:top[0].reasons,score:top[0].score};
+}
+
 function wRand(all){
   const w=[];all.forEach(m=>{const p=dw[m.name]||0;const wt=p>=5?0:Math.pow(0.5,p);if(wt>0)w.push({m,wt});});
   if(!w.length)return all[Math.floor(Math.random()*all.length)];
@@ -467,10 +701,35 @@ function wRand(all){
 }
 function recommend(){
   const all=getMenus();if(!all.length)return;
-  const p=wRand(all);setMenu(p);
+  updateEnvData(); // 시간/요일 갱신
+  
+  // 🧠 스마트 추천 (망각 곡선 + 컨텍스트 가중치)
+  const result=smartRecommend(all);
+  const p=result.menu;
+  setMenu(p);
+  
+  // 추천 이유 표시
+  showRecommendReason(result.reasons||[]);
+  
+  // 대안 메뉴도 스마트하게 (스마트 추천 상위 후보들)
   const rest=all.filter(m=>m.name!==p.name).sort(()=>Math.random()-0.5).slice(0,4);
   document.getElementById('altRow').innerHTML=rest.map(a=>`<div class="ac" onclick="pickAlt('${e(a.name)}','${e(a.desc)}',${a.cal},'${a.tags.join(",")}')"><div class="an">${a.name}</div><div class="aca">${a.cal} kcal</div></div>`).join('');
   document.getElementById('dbCount').textContent='현재 모드 메뉴 '+all.length+'개';rstV();
+}
+
+// 추천 이유 UI 표시
+function showRecommendReason(reasons){
+  const wrap=document.getElementById('recReason');
+  if(!wrap) return;
+  if(!reasons||!reasons.length){
+    wrap.style.display='none';
+    return;
+  }
+  wrap.style.display='block';
+  // 중복 제거 후 최대 3개
+  const unique=[...new Set(reasons)].slice(0,3);
+  wrap.innerHTML='<div class="rr-title">💡 왜 이 메뉴를 추천했냐면...</div>'+
+    unique.map(r=>`<div class="rr-item">${r}</div>`).join('');
 }
 function setMenu(m){curMenu=m.name;window.curMenuData=m;document.getElementById('recName').textContent=m.name;document.getElementById('recDesc').textContent=m.desc;document.getElementById('recCal').textContent='약 '+m.cal+' kcal';document.getElementById('recTags').innerHTML=m.tags.map(t=>`<span class="rtag">${t}</span>`).join('');if(menuFirstMode)fetchNearbyMenuRestaurants(m.name);else document.getElementById('menuFirstWrap').style.display='none';}
 function pickAlt(name,desc,cal,tags){curMenu=name;window.curMenuData={name,desc,cal,tags:tags.split(',')};document.getElementById('recName').textContent=name;document.getElementById('recDesc').textContent=desc;document.getElementById('recCal').textContent='약 '+cal+' kcal';document.getElementById('recTags').innerHTML=tags.split(',').map(t=>`<span class="rtag">${t}</span>`).join('');rstV();if(menuFirstMode)fetchNearbyMenuRestaurants(name);else document.getElementById('menuFirstWrap').style.display='none';}
@@ -609,7 +868,15 @@ function getLocation(){
   return new Promise((resolve, reject)=>{
     if(!navigator.geolocation){ reject('위치 서비스를 지원하지 않는 기기예요'); return; }
     navigator.geolocation.getCurrentPosition(
-      pos=>{ userLat=pos.coords.latitude; userLng=pos.coords.longitude; resolve(); },
+      pos=>{ 
+        userLat=pos.coords.latitude; 
+        userLng=pos.coords.longitude;
+        window.userLat=userLat;
+        window.userLng=userLng;
+        // 위치 알게 됐으니 날씨 다시 가져오기
+        fetchWeather().then(()=>recommend()).catch(()=>{});
+        resolve(); 
+      },
       ()=>reject('위치 권한을 허용해주세요'),
       {timeout:10000}
     );
@@ -792,6 +1059,15 @@ try {
     const mb=document.getElementById('mode-'+mode);
     if(mb)mb.classList.add('sel');
   }
+  
+  // 🧠 스마트 추천 환경 데이터 초기화
+  updateEnvData();
+  // 날씨는 비동기로 가져옴 (실패해도 앱 작동)
+  fetchWeather().then(()=>{
+    // 날씨 정보 받은 후 다시 추천 (더 정확)
+    recommend();
+  }).catch(e=>console.warn('[weather] 초기 로드 실패:',e));
+  
   recommend();renderLog();renderRcps();
   console.log('✅ 앱 초기화 완료');
 } catch(e){
