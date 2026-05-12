@@ -1142,17 +1142,17 @@ function calculateContextScore(menu){
   
   const diff = Math.abs(userSpicy - menuSpicy);
   if(diff===0){
-    score+=20;
+    score+=25; // 일치: 상향
     const labels=['🥛 안매운','😊 순한','🌶️ 매콤한','🔥 매운'];
     reasons.push(labels[userSpicy]+' 음식 선호도와 일치');
   } else if(diff===1){
     score+=5; // 한 단계 차이는 약간 가산
   } else if(diff===2){
-    score-=15; // 두 단계 차이는 감점
+    score-=40; // 두 단계 차이는 강한 감점
     reasons.push('🌶️ 매운맛 선호도와 다름');
   } else if(diff===3){
-    score-=35; // 정반대는 강한 감점
-    reasons.push('🌶️ 매운맛 선호도와 정반대');
+    // 정반대(예: 매운맛↔안매움)는 후보에서 완전 제외
+    return {score:-999,reasons:['🌶️ 매운맛 선호도와 정반대로 제외']};
   }
   
   return {score,reasons};
@@ -1181,7 +1181,7 @@ function smartRecommend(all){
   
   // 가중치 기반 추첨 (상위 후보일수록 뽑힐 확률 높음)
   valid.sort((a,b)=>b.score-a.score);
-  const top=valid.slice(0,Math.min(10,valid.length)); // 상위 10개 중 선택
+  const top=valid.slice(0,Math.min(5,valid.length)); // 상위 5개 중 선택 (선호도 반영 강화)
   const tot=top.reduce((s,x)=>s+x.score,0);
   let r=Math.random()*tot;
   for(const c of top){
@@ -1837,7 +1837,7 @@ if('serviceWorker' in navigator){
       if('caches' in window){
         const keys = await caches.keys();
         for(const k of keys){
-          if(k !== 'mwomogji-v12'){
+          if(k !== 'mwomogji-v13'){
             await caches.delete(k);
             console.log('🗑️ 옛 캐시 삭제:', k);
           }
