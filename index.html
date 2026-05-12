@@ -719,10 +719,19 @@ function updateEnvData(){
 }
 
 // 날씨 가져오기 (Open-Meteo - 무료, API 키 불필요!)
+let _weatherTimer = null;
+let _lastWeatherLat = null;
+let _lastWeatherLng = null;
 async function fetchWeather(){
+  const lat = window.userLat||37.5665;
+  const lng = window.userLng||126.9780;
+  // 같은 좌표로 이미 요청 중이거나 완료된 경우 스킵
+  if(_weatherTimer && _lastWeatherLat===lat && _lastWeatherLng===lng) return;
+  if(_weatherTimer) clearTimeout(_weatherTimer);
+  _lastWeatherLat = lat;
+  _lastWeatherLng = lng;
+  _weatherTimer = setTimeout(()=>{ _weatherTimer = null; }, 2000);
   try{
-    const lat=window.userLat||37.5665;  // 서울 기본
-    const lng=window.userLng||126.9780;
     const res=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code&timezone=auto`);
     const data=await res.json();
     envData.temp=data.current?.temperature_2m;
