@@ -558,6 +558,37 @@ try {
   </div>
 </div>
 
+<!-- 🛒 장보기 -->
+<div id="shop" class="sec">
+  <div class="stabs">
+    <div class="stab active" id="shop-tab-list" onclick="switchShopTab('list')">🛒 구매목록</div>
+    <div class="stab" id="shop-tab-done" onclick="switchShopTab('done')">✅ 구매완료</div>
+  </div>
+
+  <!-- 구매목록 -->
+  <div id="shop-list">
+    <div class="card">
+      <div class="ctitle">➕ 구매할 재료 추가</div>
+      <div class="ar">
+        <input class="ai" id="shopInput" placeholder="예: 계란, 양파, 김치" onkeydown="if(event.key==='Enter')addShopItem()"/>
+        <button class="abtn" onclick="addShopItem()">추가</button>
+      </div>
+      <div class="ctitle" style="margin-top:14px">🛒 구매할 목록</div>
+      <div id="shopListContent"><div class="elog">구매할 재료가 없어요. 추가해보세요!</div></div>
+    </div>
+  </div>
+
+  <!-- 구매완료 -->
+  <div id="shop-done" style="display:none">
+    <div class="card">
+      <div class="ctitle">✅ 구매완료 재료</div>
+      <div id="shopDoneContent"><div class="elog">구매완료된 재료가 없어요</div></div>
+      <button class="abtn" style="width:100%;margin-top:14px;padding:12px;font-size:15px" onclick="recommendRecipe()">🍳 이 재료로 레시피 추천받기</button>
+      <div id="recipeResult" style="margin-top:14px"></div>
+    </div>
+  </div>
+</div>
+
 <!-- 여행지 -->
 <div id="trv" class="sec">
   <div class="card">
@@ -574,6 +605,7 @@ try {
   <button onclick="showTab('pop')"><span class="ni">🔥</span><span class="nt">뭐먹어?</span></button>
   <button onclick="showTab('log')"><span class="ni">📝</span><span class="nt">식단일기</span></button>
   <button onclick="showTab('rcp')"><span class="ni">🏠</span><span class="nt">집밥</span></button>
+  <button onclick="showTab('shop')"><span class="ni">🛒</span><span class="nt">장보기</span></button>
   <button onclick="showTab('trv')"><span class="ni">🗺️</span><span class="nt">여행지</span></button>
   <button onclick="showTab('pref')"><span class="ni">⚙️</span><span class="nt">설정</span></button>
 </nav>
@@ -638,12 +670,214 @@ function showTab(t){
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById(t).classList.add('active');
-  ['rec','pop','log','rcp','trv','pref'].forEach((n,i)=>{if(n===t)document.querySelectorAll('.nav button')[i].classList.add('active');});
-  if(t==='trv')buildReg();if(t==='pop'){renderPop();checkAdminMode();}if(t==='pref')renderDL();
+  ['rec','pop','log','rcp','shop','trv','pref'].forEach((n,i)=>{if(n===t)document.querySelectorAll('.nav button')[i].classList.add('active');});
+  if(t==='trv')buildReg();if(t==='pop'){renderPop();checkAdminMode();}if(t==='pref')renderDL();if(t==='shop')renderShop();
 }
 function selMode(m){mode=m;document.querySelectorAll('.mbtn').forEach(b=>b.classList.remove('sel'));document.getElementById('mode-'+m).classList.add('sel');saveLS();}
 function toggleTag(el){el.classList.toggle('sel');}
 function selSpicy(el){document.querySelectorAll('.spbtn').forEach(b=>b.classList.remove('sel'));el.classList.add('sel');}
+// ───────────────────────────────────────
+// 🛒 장보기 기능 (v27 신규)
+// ───────────────────────────────────────
+function getShopList(){try{return JSON.parse(localStorage.getItem('shoppingList')||'[]');}catch(e){return [];}}
+function getShopDone(){try{return JSON.parse(localStorage.getItem('shoppingDone')||'[]');}catch(e){return [];}}
+function setShopList(arr){localStorage.setItem('shoppingList',JSON.stringify(arr));}
+function setShopDone(arr){localStorage.setItem('shoppingDone',JSON.stringify(arr));}
+
+function switchShopTab(tab){
+  document.querySelectorAll('#shop .stab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('shop-tab-'+tab).classList.add('active');
+  document.getElementById('shop-list').style.display = (tab==='list')?'block':'none';
+  document.getElementById('shop-done').style.display = (tab==='done')?'block':'none';
+  renderShop();
+}
+
+function addShopItem(){
+  const input = document.getElementById('shopInput');
+  const val = input.value.trim();
+  if(!val) return;
+  // 쉼표로 구분된 여러 항목도 지원
+  const items = val.split(/[,，、]/).map(s=>s.trim()).filter(Boolean);
+  const list = getShopList();
+  const now = Date.now();
+  items.forEach((item,i)=>{
+    list.push({id: now+i, item: item, date: new Date().toISOString().slice(0,10)});
+  });
+  setShopList(list);
+  input.value = '';
+  renderShop();
+}
+
+function completeShopItem(id){
+  const list = getShopList();
+  const idx = list.findIndex(x=>x.id===id);
+  if(idx<0) return;
+  const item = list[idx];
+  list.splice(idx,1);
+  setShopList(list);
+  const done = getShopDone();
+  done.push({...item, completed_date: new Date().toISOString().slice(0,10)});
+  setShopDone(done);
+  renderShop();
+}
+
+function deleteShopItem(id, isDone){
+  if(isDone){
+    const done = getShopDone().filter(x=>x.id!==id);
+    setShopDone(done);
+  } else {
+    const list = getShopList().filter(x=>x.id!==id);
+    setShopList(list);
+  }
+  renderShop();
+}
+
+function restoreShopItem(id){
+  // 구매완료 → 구매목록으로 되돌리기
+  const done = getShopDone();
+  const idx = done.findIndex(x=>x.id===id);
+  if(idx<0) return;
+  const item = done[idx];
+  done.splice(idx,1);
+  setShopDone(done);
+  const list = getShopList();
+  delete item.completed_date;
+  list.push(item);
+  setShopList(list);
+  renderShop();
+}
+
+function renderShop(){
+  // 구매목록
+  const listEl = document.getElementById('shopListContent');
+  if(listEl){
+    const list = getShopList();
+    if(!list.length){
+      listEl.innerHTML = '<div class="elog">구매할 재료가 없어요. 추가해보세요!</div>';
+    } else {
+      listEl.innerHTML = list.map(it=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid #f3e8f0">
+          <span style="flex:1;font-size:15px">${escapeHtml(it.item)}</span>
+          <button class="abtn" style="padding:6px 12px;font-size:13px;background:#10b981" onclick="completeShopItem(${it.id})">✅ 완료</button>
+          <button class="abtn" style="padding:6px 10px;font-size:13px;background:#9ca3af" onclick="deleteShopItem(${it.id},false)">🗑️</button>
+        </div>
+      `).join('');
+    }
+  }
+  // 구매완료
+  const doneEl = document.getElementById('shopDoneContent');
+  if(doneEl){
+    const done = getShopDone();
+    if(!done.length){
+      doneEl.innerHTML = '<div class="elog">구매완료된 재료가 없어요</div>';
+    } else {
+      doneEl.innerHTML = done.map(it=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid #f3e8f0">
+          <span style="flex:1;font-size:15px">✓ ${escapeHtml(it.item)}</span>
+          <button class="abtn" style="padding:6px 10px;font-size:13px;background:#f59e0b" onclick="restoreShopItem(${it.id})">↩️</button>
+          <button class="abtn" style="padding:6px 10px;font-size:13px;background:#9ca3af" onclick="deleteShopItem(${it.id},true)">🗑️</button>
+        </div>
+      `).join('');
+    }
+  }
+}
+
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+// 🍳 키워드 매칭 기반 레시피 추천
+function recommendRecipe(){
+  const done = getShopDone();
+  const resultEl = document.getElementById('recipeResult');
+  if(!done.length){
+    resultEl.innerHTML = '<div class="elog">구매완료한 재료가 없어요. 먼저 재료를 추가해주세요!</div>';
+    return;
+  }
+  
+  // 재료 키워드 추출 (모든 모드의 메뉴 전체 검색)
+  const ingredients = done.map(x=>x.item.trim()).filter(Boolean);
+  
+  // 모든 메뉴 모으기
+  let allMenus = [];
+  ['normal','diet','happy'].forEach(modeKey=>{
+    if(!DB[modeKey])return;
+    Object.entries(DB[modeKey]).forEach(([cuisine,arr])=>{
+      arr.forEach(m=>allMenus.push({...m, cuisine, modeKey}));
+    });
+  });
+  
+  // 중복 제거 (name 기준)
+  const seen = new Set();
+  allMenus = allMenus.filter(m=>{
+    if(seen.has(m.name))return false;
+    seen.add(m.name);
+    return true;
+  });
+  
+  // 각 메뉴별로 매칭 점수 계산
+  const scored = allMenus.map(menu=>{
+    let score = 0;
+    const matchedIngs = [];
+    const searchText = (menu.name + ' ' + menu.desc + ' ' + (menu.tags||[]).join(' ')).toLowerCase();
+    
+    ingredients.forEach(ing=>{
+      const ingLower = ing.toLowerCase();
+      // 이름에 포함되면 +3
+      if(menu.name.toLowerCase().includes(ingLower)){
+        score += 3;
+        matchedIngs.push(ing);
+      }
+      // 설명/태그에 포함되면 +1
+      else if(searchText.includes(ingLower)){
+        score += 1;
+        matchedIngs.push(ing);
+      }
+      // 부분 일치 (재료 단어가 메뉴에 일부 포함, 예: '계란' → '계란밥')
+      else {
+        // 2글자 이상 부분 매칭
+        for(let i=0;i<=ingLower.length-2;i++){
+          const part = ingLower.slice(i, i+2);
+          if(searchText.includes(part)){
+            score += 0.3;
+            break;
+          }
+        }
+      }
+    });
+    return {...menu, score, matchedIngs: [...new Set(matchedIngs)]};
+  });
+  
+  // 점수 내림차순 정렬, 상위 5개
+  const top = scored.filter(m=>m.score>0).sort((a,b)=>b.score-a.score).slice(0,5);
+  
+  if(!top.length){
+    resultEl.innerHTML = `
+      <div class="card" style="background:#fef3f2;border:1px solid #fecaca">
+        <div style="font-size:14px;color:#991b1b">😅 매칭되는 레시피를 찾지 못했어요.</div>
+        <div style="font-size:13px;color:#7c3344;margin-top:6px">재료를 좀 더 추가하거나 다른 재료로 시도해보세요!</div>
+      </div>
+    `;
+    return;
+  }
+  
+  resultEl.innerHTML = `
+    <div class="ctitle" style="margin-top:8px">🍳 추천 레시피 (재료 매칭 기반)</div>
+    ${top.map((m,i)=>`
+      <div style="padding:12px;border:1px solid #f3e8f0;border-radius:10px;margin-bottom:8px;background:#fffafd">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:16px;font-weight:bold;color:#be185d">${i+1}. ${escapeHtml(m.name)}</span>
+          <span style="font-size:11px;background:#fbcfe8;color:#831843;padding:2px 8px;border-radius:10px">${m.cuisine}</span>
+        </div>
+        <div style="font-size:13px;color:#6b7280;margin-bottom:6px">${escapeHtml(m.desc)}</div>
+        <div style="font-size:12px;color:#9ca3af">
+          ${m.matchedIngs.length?`✨ 매칭 재료: <strong style="color:#10b981">${m.matchedIngs.map(escapeHtml).join(', ')}</strong>`:''}
+          ${m.cal?` · ${m.cal}kcal`:''}
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+
 function getMenus(){
   const c=Array.from(document.querySelectorAll('#cuisineRow .tag.sel')).map(t=>t.textContent.replace(/[🍲🍝🥟🍣🍛🌍]/g,'').trim());
   const db=DB[mode]||DB.normal;let all=[];
@@ -1527,7 +1761,7 @@ if('serviceWorker' in navigator){
       if('caches' in window){
         const keys = await caches.keys();
         for(const k of keys){
-          if(k !== 'mwomogji-v6'){
+          if(k !== 'mwomogji-v7'){
             await caches.delete(k);
             console.log('🗑️ 옛 캐시 삭제:', k);
           }
