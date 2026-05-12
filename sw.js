@@ -1,27 +1,13 @@
-const CACHE_NAME = 'mwomogji-v4';
-const ASSETS = [
-  './index.html',
-  './manifest.json'
-];
-
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
-  );
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
-});
-
-self.addEventListener('fetch', e => {
-  e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
-  );
-});
+{
+  "name": "오늘 뭐먹지?",
+  "short_name": "뭐먹지",
+  "description": "오늘 뭐 먹을지 추천해주는 앱",
+  "start_url": "/food-picker/index.html",
+  "scope": "/food-picker/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#F9A8D4",
+  "orientation": "portrait",
+  "lang": "ko",
+  "categories": ["food", "lifestyle"]
+}
