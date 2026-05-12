@@ -1519,16 +1519,28 @@ async function fetchNearbyMenuRestaurants(menuName){
   }
 }
 
-// 서비스 워커 등록 (자동 업데이트 감지)
+// 서비스 워커: 망가진 캐시 정리 후 재등록
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('./sw.js').then(reg=>{
-      // 1시간마다 SW 업데이트 체크
+  window.addEventListener('load', async ()=>{
+    try {
+      // 1. 기존 캐시 중 v6이 아닌 것 모두 삭제 (망가진 캐시 청소)
+      if('caches' in window){
+        const keys = await caches.keys();
+        for(const k of keys){
+          if(k !== 'mwomogji-v6'){
+            await caches.delete(k);
+            console.log('🗑️ 옛 캐시 삭제:', k);
+          }
+        }
+      }
+      // 2. SW 등록
+      const reg = await navigator.serviceWorker.register('./sw.js');
+      // 3. 업데이트 체크 (1시간마다)
       setInterval(()=>reg.update(), 60*60*1000);
-      // 새 SW 발견 시 자동 적용
+      // 4. 새 SW 설치되면 자동 새로고침
       reg.addEventListener('updatefound',()=>{
-        const newSW=reg.installing;
-        if(!newSW)return;
+        const newSW = reg.installing;
+        if(!newSW) return;
         newSW.addEventListener('statechange',()=>{
           if(newSW.state==='installed' && navigator.serviceWorker.controller){
             console.log('🔄 새 버전 감지, 페이지 새로고침');
@@ -1536,7 +1548,10 @@ if('serviceWorker' in navigator){
           }
         });
       });
-    }).catch(err=>console.warn('[SW] 등록 실패:',err));
+      console.log('✅ SW 등록 완료');
+    } catch(err){
+      console.warn('[SW] 등록 실패:', err);
+    }
   });
 }
 
