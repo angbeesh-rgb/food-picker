@@ -58,6 +58,30 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .adst-value{font-size:16px;font-weight:800;color:#DC2626}
 .admin-item{padding:8px 10px;background:#FEF2F2;border-radius:6px;margin-bottom:4px;font-size:12px;color:#7F1D1D;display:flex;justify-content:space-between;align-items:center}
 .admin-item-small{padding:4px 8px;font-size:11px;color:#888;border-bottom:1px solid #FECACA;font-family:monospace}
+/* 📅 달력 */
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.cal-title{font-size:16px;font-weight:800;color:#7C2D5A}
+.cal-nav{background:#FCE7F3;border:none;border-radius:8px;width:36px;height:36px;font-size:14px;color:#9D174D;cursor:pointer;font-weight:700}
+.cal-nav:active{background:#FBCFE8}
+.cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;font-size:11px;font-weight:700;color:#888;text-align:center}
+.cal-weekdays div:first-child{color:#DC2626}
+.cal-weekdays div:last-child{color:#2563EB}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-day{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;background:#FFF9FB;border:1.5px solid transparent;cursor:pointer;font-size:13px;font-weight:600;color:#1a1a1a;transition:all 0.15s;position:relative}
+.cal-day:hover{background:#FCE7F3}
+.cal-day:active{transform:scale(0.95)}
+.cal-day.other-month{color:#ccc;cursor:default;pointer-events:none}
+.cal-day.today{background:#F9A8D4;color:#fff;font-weight:800}
+.cal-day.has-data::after{content:'';position:absolute;bottom:3px;width:5px;height:5px;border-radius:50%;background:#10B981}
+.cal-day.today.has-data::after{background:#fff}
+.cal-day.selected{border-color:#9D174D;background:#FBCFE8}
+.cal-day.sunday{color:#DC2626}
+.cal-day.sunday.other-month{color:#FECACA}
+.cal-day.saturday{color:#2563EB}
+.cal-day.saturday.other-month{color:#BFDBFE}
+.cal-legend{display:flex;align-items:center;font-size:11px;color:#888;margin-top:10px;padding-top:10px;border-top:1px solid #FCE7F3}
+.cal-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#10B981;margin-right:4px}
+.cal-dot.today{background:#F9A8D4}
 /* 대안 메뉴 */
 .arow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .ac{background:#fff;border:1.5px solid #FCE7F3;border-radius:12px;padding:10px;cursor:pointer;transition:all 0.2s;text-align:center}
@@ -479,18 +503,56 @@ try {
 
 <!-- 식단일기 -->
 <div id="log" class="sec">
-  <div class="card">
-    <div class="strow">
-      <div class="stbox"><div class="stnum" id="todayCal">0</div><div class="stlbl">오늘 칼로리 (kcal)</div></div>
-      <div class="stbox"><div class="stnum" id="mealCount">0</div><div class="stlbl">오늘 식사 횟수</div></div>
+  <div class="stabs">
+    <div class="stab active" id="log-tab-today" onclick="switchLogTab('today')">📝 오늘 식단</div>
+    <div class="stab" id="log-tab-calendar" onclick="switchLogTab('calendar')">📅 달력으로 보기</div>
+  </div>
+  
+  <!-- 오늘 식단 (기존) -->
+  <div id="log-today">
+    <div class="card">
+      <div class="strow">
+        <div class="stbox"><div class="stnum" id="todayCal">0</div><div class="stlbl">오늘 칼로리 (kcal)</div></div>
+        <div class="stbox"><div class="stnum" id="mealCount">0</div><div class="stlbl">오늘 식사 횟수</div></div>
+      </div>
+      <div class="ctitle">📝 오늘 식단</div>
+      <div id="logList"><div class="elog">아직 기록된 식사가 없어요</div></div>
+      <div class="ctitle" style="margin-top:14px">➕ 식사 추가</div>
+      <select id="mealType"><option>🌅 아침</option><option selected>☀️ 점심</option><option>🌙 저녁</option><option>🍪 간식</option></select>
+      <div class="ar">
+        <input class="ai" id="addMealName" placeholder="음식 이름"/>
+        <input class="ai" id="addMealCal" placeholder="칼로리" type="number" style="max-width:90px"/>
+        <button class="abtn" onclick="addMeal()">추가</button>
+      </div>
     </div>
-    <div class="ctitle">📝 오늘 식단</div>
-    <div id="logList"><div class="elog">아직 기록된 식사가 없어요</div></div>
-    <div class="ctitle" style="margin-top:14px">➕ 식사 추가</div>
-    <select id="mealType"><option>🌅 아침</option><option selected>☀️ 점심</option><option>🌙 저녁</option><option>🍪 간식</option></select>
-    <div class="ar">
-      <input class="ai" id="addMealName" placeholder="음식 이름"/>
-      <button class="abtn" onclick="addMeal()">추가</button>
+  </div>
+  
+  <!-- 📅 달력 보기 (신규) -->
+  <div id="log-calendar" style="display:none">
+    <div class="card">
+      <div class="cal-header">
+        <button class="cal-nav" onclick="changeCalMonth(-1)">◀</button>
+        <div class="cal-title" id="calTitle">2024년 5월</div>
+        <button class="cal-nav" onclick="changeCalMonth(1)">▶</button>
+      </div>
+      <div class="cal-weekdays">
+        <div>일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-legend">
+        <span class="cal-dot has-data"></span> 식단 기록 있음
+        <span class="cal-dot today" style="margin-left:14px"></span> 오늘
+      </div>
+    </div>
+    
+    <!-- 선택된 날짜의 식단 상세 -->
+    <div class="card" id="calDetailCard" style="display:none">
+      <div class="ctitle" id="calDetailTitle">📅 선택한 날짜</div>
+      <div class="strow">
+        <div class="stbox"><div class="stnum" id="calDetailCal">0</div><div class="stlbl">총 칼로리 (kcal)</div></div>
+        <div class="stbox"><div class="stnum" id="calDetailCount">0</div><div class="stlbl">식사 횟수</div></div>
+      </div>
+      <div id="calDetailList"></div>
     </div>
   </div>
 </div>
@@ -1122,8 +1184,170 @@ const todayMeals=meals.filter(m=>(m.date||today)===today);
 document.getElementById('todayCal').textContent=todayMeals.reduce((s,m)=>s+m.cal,0).toLocaleString();
 document.getElementById('mealCount').textContent=todayMeals.length;
 }
-function addMeal(){const n=document.getElementById('addMealName').value.trim(),t=document.getElementById('mealType').value;if(!n)return;meals.unshift({name:n,cal:0,type:t,date:todayKey(),ts:Date.now()});document.getElementById('addMealName').value='';saveLS();renderLog();}
-function delM(i){meals.splice(i,1);saveLS();renderLog();}
+function addMeal(){
+  const n=document.getElementById('addMealName').value.trim();
+  const t=document.getElementById('mealType').value;
+  const calInput=document.getElementById('addMealCal');
+  const cal=parseInt(calInput?.value)||0;
+  if(!n)return;
+  meals.unshift({name:n,cal:cal,type:t,date:todayKey(),ts:Date.now()});
+  document.getElementById('addMealName').value='';
+  if(calInput)calInput.value='';
+  saveLS();
+  renderLog();
+  // 달력이 열려 있으면 갱신
+  if(document.getElementById('log-calendar').style.display!=='none'){
+    renderCalendar();
+  }
+}
+function delM(i){
+  meals.splice(i,1);
+  saveLS();
+  renderLog();
+  if(document.getElementById('log-calendar').style.display!=='none'){
+    renderCalendar();
+    // 선택된 날짜 상세도 갱신
+    if(selectedCalDate)showCalDayDetail(selectedCalDate);
+  }
+}
+
+// ───────────────────────────────────────
+// 📅 식단 달력 (로컬 전용)
+// ───────────────────────────────────────
+let calCurrentDate=new Date();  // 현재 보고 있는 월
+let selectedCalDate=null;        // 선택된 날짜 (YYYY-MM-DD)
+
+function switchLogTab(tab){
+  const todayEl=document.getElementById('log-today');
+  const calEl=document.getElementById('log-calendar');
+  const tabToday=document.getElementById('log-tab-today');
+  const tabCal=document.getElementById('log-tab-calendar');
+  
+  if(tab==='today'){
+    todayEl.style.display='block';
+    calEl.style.display='none';
+    tabToday.classList.add('active');
+    tabCal.classList.remove('active');
+  } else {
+    todayEl.style.display='none';
+    calEl.style.display='block';
+    tabToday.classList.remove('active');
+    tabCal.classList.add('active');
+    renderCalendar();
+  }
+}
+
+function changeCalMonth(delta){
+  calCurrentDate.setMonth(calCurrentDate.getMonth()+delta);
+  renderCalendar();
+}
+
+function renderCalendar(){
+  const year=calCurrentDate.getFullYear();
+  const month=calCurrentDate.getMonth(); // 0~11
+  
+  // 타이틀 업데이트
+  document.getElementById('calTitle').textContent=`${year}년 ${month+1}월`;
+  
+  // 식단 데이터가 있는 날짜 집합
+  const datesWithData=new Set();
+  meals.forEach(m=>{
+    if(m.date)datesWithData.add(m.date);
+  });
+  
+  const today=todayKey();
+  const firstDay=new Date(year,month,1);
+  const lastDay=new Date(year,month+1,0);
+  const startWeekday=firstDay.getDay(); // 0=일
+  const daysInMonth=lastDay.getDate();
+  
+  // 이전 달 마지막 날짜들 (회색)
+  const prevLastDay=new Date(year,month,0).getDate();
+  
+  let html='';
+  
+  // 이전 달 채우기
+  for(let i=startWeekday-1;i>=0;i--){
+    const day=prevLastDay-i;
+    const wd=(startWeekday-1-i)%7;
+    const wdCls=wd===0?'sunday':wd===6?'saturday':'';
+    html+=`<div class="cal-day other-month ${wdCls}">${day}</div>`;
+  }
+  
+  // 이번 달
+  for(let day=1;day<=daysInMonth;day++){
+    const dateStr=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const weekday=new Date(year,month,day).getDay();
+    const wdCls=weekday===0?'sunday':weekday===6?'saturday':'';
+    const isToday=dateStr===today;
+    const hasData=datesWithData.has(dateStr);
+    const isSelected=dateStr===selectedCalDate;
+    
+    const classes=['cal-day',wdCls];
+    if(isToday)classes.push('today');
+    if(hasData)classes.push('has-data');
+    if(isSelected)classes.push('selected');
+    
+    html+=`<div class="${classes.join(' ').trim()}" onclick="showCalDayDetail('${dateStr}')">${day}</div>`;
+  }
+  
+  // 다음 달 채우기 (총 42칸 = 6주 맞춤)
+  const totalCells=startWeekday+daysInMonth;
+  const remaining=42-totalCells;
+  for(let i=1;i<=remaining&&i<=7;i++){
+    const wd=(totalCells+i-1)%7;
+    const wdCls=wd===0?'sunday':wd===6?'saturday':'';
+    html+=`<div class="cal-day other-month ${wdCls}">${i}</div>`;
+  }
+  // 5주째에서 끝나면 추가 안 함
+  
+  document.getElementById('calGrid').innerHTML=html;
+}
+
+function showCalDayDetail(dateStr){
+  selectedCalDate=dateStr;
+  renderCalendar(); // 선택 표시 갱신
+  
+  const card=document.getElementById('calDetailCard');
+  const titleEl=document.getElementById('calDetailTitle');
+  const listEl=document.getElementById('calDetailList');
+  const calEl=document.getElementById('calDetailCal');
+  const countEl=document.getElementById('calDetailCount');
+  
+  // 해당 날짜 메뉴 필터링
+  const dayMeals=meals.map((m,i)=>({...m,idx:i})).filter(m=>(m.date||todayKey())===dateStr);
+  
+  // 한국어 날짜 표시
+  const [y,mo,d]=dateStr.split('-').map(Number);
+  const dayOfWeek=['일','월','화','수','목','금','토'][new Date(y,mo-1,d).getDay()];
+  titleEl.textContent=`📅 ${mo}월 ${d}일 (${dayOfWeek}) 식단`;
+  
+  card.style.display='block';
+  
+  if(!dayMeals.length){
+    listEl.innerHTML='<div class="elog" style="padding:20px 0">이 날에는 식단 기록이 없어요</div>';
+    calEl.textContent='0';
+    countEl.textContent='0';
+    return;
+  }
+  
+  // 식단 표시
+  listEl.innerHTML=dayMeals.map(m=>`
+    <div class="li">
+      <div>
+        <div class="lm">${m.name}</div>
+        <div class="linfo">${m.type}</div>
+      </div>
+      <div class="lr">
+        <div class="lcal">${m.cal} kcal</div>
+        <button class="db" onclick="delM(${m.idx})">×</button>
+      </div>
+    </div>
+  `).join('');
+  
+  calEl.textContent=dayMeals.reduce((s,m)=>s+m.cal,0).toLocaleString();
+  countEl.textContent=dayMeals.length;
+}
 function rate(n){document.querySelectorAll('.star').forEach((s,i)=>s.classList.toggle('lit',i<n));}
 function buildReg(){const areas=['수도권','전라도','경상도','강원도','충청도','제주'];let html='';areas.forEach(area=>{const rs=Object.keys(travelDB).filter(r=>travelDB[r].area===area);if(!rs.length)return;html+=`<div style="font-size:11px;font-weight:700;color:#aaa;margin-top:8px;letter-spacing:0.5px">${area}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0 4px">`;rs.forEach(r=>html+=`<button class="rgbtn${r===selReg?' active':''}" onclick="pickReg('${r}')">${r}</button>`);html+='</div>';});document.getElementById('regionGrid').innerHTML=html;updT(selReg);}
 function pickReg(r){selReg=r;document.querySelectorAll('.rgbtn').forEach(b=>b.classList.toggle('active',b.textContent.trim()===r));updT(r);}
