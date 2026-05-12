@@ -971,13 +971,8 @@ function renderPop(){
   if(typeof window.fbGetVotes === 'function'){
     try {
       window.fbGetVotes(function(fbData){
-        // Firebase (오늘 데이터만) + 로컬 오늘 카운트 합치기
-        const todayLocal=getLV();
-        const combined={...fbData};
-        Object.entries(todayLocal).forEach(([k,v])=>{
-          combined[k]=(combined[k]||0)+v;
-        });
-        _renderPopData(combined);
+        // Firebase 데이터만 사용 (로컬은 Firebase 장애 시 폴백용)
+        _renderPopData(fbData);
       });
     } catch(e){
       console.error('[renderPop] fbGetVotes 호출 실패:', e);
