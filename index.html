@@ -576,7 +576,7 @@ function showTab(t){
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById(t).classList.add('active');
   ['rec','pop','log','rcp','trv','pref'].forEach((n,i)=>{if(n===t)document.querySelectorAll('.nav button')[i].classList.add('active');});
-  if(t==='trv')buildReg();if(t==='pop')renderPop();if(t==='pref')renderDL();
+  if(t==='trv')buildReg();if(t==='pop'){renderPop();checkAdminMode();}if(t==='pref')renderDL();
 }
 function selMode(m){mode=m;document.querySelectorAll('.mbtn').forEach(b=>b.classList.remove('sel'));document.getElementById('mode-'+m).classList.add('sel');saveLS();}
 function toggleTag(el){el.classList.toggle('sel');}
@@ -942,9 +942,14 @@ function _renderPopData(lv){const now=new Date();
 const ADMIN_PASSWORD='angbeesh2024'; // 🔑 관리자 비밀번호 (필요시 변경)
 
 function checkAdminMode(){
+  // URL 파라미터 방식: ?admin=비밀번호
   const params=new URLSearchParams(window.location.search);
   const pwd=params.get('admin');
-  if(pwd===ADMIN_PASSWORD){
+  // Hash 방식도 지원: #admin=비밀번호
+  const hashParams=new URLSearchParams(window.location.hash.replace('#',''));
+  const hashPwd=hashParams.get('admin');
+  
+  if(pwd===ADMIN_PASSWORD||hashPwd===ADMIN_PASSWORD){
     document.body.classList.add('admin-mode');
     const adminPanel=document.getElementById('adminPanel');
     if(adminPanel) adminPanel.style.display='block';
