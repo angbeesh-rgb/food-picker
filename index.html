@@ -813,91 +813,112 @@ function recommendRecipe(){
     resultEl.innerHTML = '<div class="elog">구매완료한 재료가 없어요. 먼저 재료를 추가해주세요!</div>';
     return;
   }
-  
-  // 재료 키워드 추출 (모든 모드의 메뉴 전체 검색)
+
   const ingredients = done.map(x=>x.item.trim()).filter(Boolean);
-  
-  // 모든 메뉴 모으기
+  // 1글자 단어(밥, 국, 물 등)는 단독 매칭 제외 — 너무 광범위
+  const mainIngs = ingredients.filter(i=>i.length >= 2);
+
+  // ── 섹션 1: 내 레시피 매칭 ──────────────────────────────
+  const myRcpResults = [];
+  rcps.forEach((r,idx)=>{
+    if(!r.ingredients || !r.ingredients.length) return;
+    const rcpIngs = r.ingredients.map(i=>i.toLowerCase().trim());
+    const matched = [];
+    mainIngs.forEach(ing=>{
+      const ingL = ing.toLowerCase();
+      if(rcpIngs.some(ri=> ri.includes(ingL) || ingL.includes(ri))){
+        matched.push(ing);
+      }
+    });
+    if(!matched.length) return;
+    const ratio = matched.length / r.ingredients.length;
+    myRcpResults.push({...r, idx, matched, ratio, score: matched.length * 10 + ratio * 5});
+  });
+  myRcpResults.sort((a,b)=>b.score-a.score);
+
+  // ── 섹션 2: DB 메뉴 매칭 (메인재료 위주) ─────────────────
   let allMenus = [];
+  const seenNames = new Set();
   ['normal','diet','happy'].forEach(modeKey=>{
     if(!DB[modeKey])return;
     Object.entries(DB[modeKey]).forEach(([cuisine,arr])=>{
-      arr.forEach(m=>allMenus.push({...m, cuisine, modeKey}));
+      arr.forEach(m=>{
+        if(seenNames.has(m.name))return;
+        seenNames.add(m.name);
+        allMenus.push({...m, cuisine, modeKey});
+      });
     });
   });
-  
-  // 중복 제거 (name 기준)
-  const seen = new Set();
-  allMenus = allMenus.filter(m=>{
-    if(seen.has(m.name))return false;
-    seen.add(m.name);
-    return true;
-  });
-  
-  // 각 메뉴별로 매칭 점수 계산
-  const scored = allMenus.map(menu=>{
+
+  const SKIP_TAGS = new Set(['국물','볶음','구이','찜','튀김','덮밥','바삭','달콤','매운맛','안매움','매콤','순한맛_매운','매운맛_강','고소','담백','진한맛','순한맛','든든','신선','건강','행복','고급','크림','따뜻','시원','여름','아침','브런치','간식','분식','정식','고단백','저칼로리','저지방','저염','발효','보양','해장','중독','푸짐','포만감','모둠','코스','밥','빵','면','밥','국','찌개','탕']);
+
+  const dbResults = allMenus.map(menu=>{
     let score = 0;
-    const matchedIngs = [];
-    const searchText = (menu.name + ' ' + menu.desc + ' ' + (menu.tags||[]).join(' ')).toLowerCase();
-    
-    ingredients.forEach(ing=>{
-      const ingLower = ing.toLowerCase();
-      // 이름에 포함되면 +3
-      if(menu.name.toLowerCase().includes(ingLower)){
-        score += 3;
-        matchedIngs.push(ing);
-      }
-      // 설명/태그에 포함되면 +1
-      else if(searchText.includes(ingLower)){
-        score += 1;
-        matchedIngs.push(ing);
-      }
-      // 부분 일치 (재료 단어가 메뉴에 일부 포함, 예: '계란' → '계란밥')
-      else {
-        // 2글자 이상 부분 매칭
-        for(let i=0;i<=ingLower.length-2;i++){
-          const part = ingLower.slice(i, i+2);
-          if(searchText.includes(part)){
-            score += 0.3;
-            break;
-          }
-        }
+    const matched = [];
+    const nameLower = menu.name.toLowerCase()
+      .replace(/\s*\+.*$/,'')   // ' + 공깃밥' 등 부가 제거
+      .replace(/\s*\(.*?\)/g,''); // 괄호 제거
+    const ingTags = (menu.tags||[]).filter(t=>!SKIP_TAGS.has(t));
+
+    mainIngs.forEach(ing=>{
+      const ingL = ing.toLowerCase();
+      if(nameLower.includes(ingL)){
+        score += 5;
+        matched.push(ing);
+      } else if(ingTags.some(t=>t.toLowerCase().includes(ingL)||ingL.includes(t.toLowerCase()))){
+        score += 2;
+        matched.push(ing);
       }
     });
-    return {...menu, score, matchedIngs: [...new Set(matchedIngs)]};
-  });
-  
-  // 점수 내림차순 정렬, 상위 5개
-  const top = scored.filter(m=>m.score>0).sort((a,b)=>b.score-a.score).slice(0,5);
-  
-  if(!top.length){
+    return {...menu, score, matched: [...new Set(matched)]};
+  }).filter(m=>m.score >= 2)
+    .sort((a,b)=>b.score-a.score)
+    .slice(0,5);
+
+  // ── 결과 렌더링 ──────────────────────────────────────────
+  if(!myRcpResults.length && !dbResults.length){
     resultEl.innerHTML = `
       <div class="card" style="background:#fef3f2;border:1px solid #fecaca">
         <div style="font-size:14px;color:#991b1b">😅 매칭되는 레시피를 찾지 못했어요.</div>
         <div style="font-size:13px;color:#7c3344;margin-top:6px">재료를 좀 더 추가하거나 다른 재료로 시도해보세요!</div>
-      </div>
-    `;
+      </div>`;
     return;
   }
-  
-  resultEl.innerHTML = `
-    <div class="ctitle" style="margin-top:8px">🍳 추천 레시피 (재료 매칭 기반)</div>
-    ${top.map((m,i)=>`
+
+  let html = '';
+
+  if(myRcpResults.length){
+    html += `<div class="ctitle" style="margin-top:8px">🏠 내 레시피 매칭</div>`;
+    html += myRcpResults.map(r=>`
+      <div style="padding:12px;border:1.5px solid #FBCFE8;border-radius:10px;margin-bottom:8px;background:#FDF2F8">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:15px;font-weight:800;color:#9D174D">🏠 ${escapeHtml(r.name)}</span>
+          <span style="font-size:11px;color:#BE185D;background:#FCE7F3;padding:2px 8px;border-radius:10px">${r.cuisine||''}${r.cal?' · '+r.cal+'kcal':''}</span>
+        </div>
+        <div style="font-size:12px;color:#BE185D;margin-bottom:6px">
+          ✨ 보유 재료: <strong>${r.matched.map(escapeHtml).join(', ')}</strong>
+          <span style="color:#aaa"> (${r.matched.length}/${r.ingredients.length}가지 충족)</span>
+        </div>
+        ${r.ingredients.length?`<div style="margin-bottom:6px">${r.ingredients.map(ig=>`<span class="itag" style="${r.matched.map(m=>m.toLowerCase()).includes(ig.toLowerCase())?'background:#BBF7D0;color:#166534':''}">${escapeHtml(ig)}</span>`).join('')}</div>`:''}
+        ${r.steps.length?`<div style="font-size:11px;color:#aaa;margin-top:4px">조리 ${r.steps.length}단계 · 집밥 탭에서 상세보기</div>`:''}
+      </div>`).join('');
+  }
+
+  if(dbResults.length){
+    html += `<div class="ctitle" style="margin-top:${myRcpResults.length?'14':'8'}px">🍳 메뉴 추천</div>`;
+    html += dbResults.map((m,i)=>`
       <div style="padding:12px;border:1px solid #f3e8f0;border-radius:10px;margin-bottom:8px;background:#fffafd">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <span style="font-size:16px;font-weight:bold;color:#be185d">${i+1}. ${escapeHtml(m.name)}</span>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span style="font-size:15px;font-weight:700;color:#be185d">${i+1}. ${escapeHtml(m.name)}</span>
           <span style="font-size:11px;background:#fbcfe8;color:#831843;padding:2px 8px;border-radius:10px">${m.cuisine}</span>
         </div>
-        <div style="font-size:13px;color:#6b7280;margin-bottom:6px">${escapeHtml(m.desc)}</div>
-        <div style="font-size:12px;color:#9ca3af">
-          ${m.matchedIngs.length?`✨ 매칭 재료: <strong style="color:#10b981">${m.matchedIngs.map(escapeHtml).join(', ')}</strong>`:''}
-          ${m.cal?` · ${m.cal}kcal`:''}
-        </div>
-      </div>
-    `).join('')}
-  `;
-}
+        <div style="font-size:12px;color:#6b7280;margin-bottom:4px">${escapeHtml(m.desc)}${m.cal?' · '+m.cal+'kcal':''}</div>
+        ${m.matched.length?`<div style="font-size:12px;color:#10b981">✨ 매칭 재료: <strong>${m.matched.map(escapeHtml).join(', ')}</strong></div>`:''}
+      </div>`).join('');
+  }
 
+  resultEl.innerHTML = html;
+}
 
 function getMenus(){
   const c=Array.from(document.querySelectorAll('#cuisineRow .tag.sel')).map(t=>t.textContent.replace(/[🍲🍝🥟🍣🍛🌍🍞]/g,'').trim());
@@ -1652,6 +1673,9 @@ function rate(n){document.querySelectorAll('.star').forEach((s,i)=>s.classList.t
 function e(s){return s.replace(/'/g,"\\'");}
 
 const searchRadius = 10000; // 고정 10km
+let menuFirstMode = false;
+let userLat = null;
+let userLng = null;
 
 
 
