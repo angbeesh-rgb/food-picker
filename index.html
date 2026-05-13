@@ -161,8 +161,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .elog{font-size:13px;color:#bbb;text-align:center;padding:20px 0}
 .mapbtn{flex:1;padding:10px 8px;border-radius:12px;border:none;background:linear-gradient(135deg,#E0F2FE,#DBEAFE);color:#1e40af;font-size:13px;font-weight:700;cursor:pointer;line-height:1.4;min-height:52px;transition:opacity 0.2s}
 .mapbtn:active{opacity:0.8}
-.radtag{padding:6px 14px;border-radius:20px;border:1.5px solid #FCE7F3;background:#FFF9FB;font-size:12px;font-weight:600;cursor:pointer;color:#888;transition:all 0.2s;user-select:none}
-.radtag.sel{background:#FDF2F8;border-color:#F9A8D4;color:#9D174D}
+
 .toggle-wrap{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0}
 .toggle-wrap input{opacity:0;width:0;height:0}
 .toggle-slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ddd;border-radius:26px;transition:0.3s}
@@ -475,14 +474,6 @@ try {
       </label>
     </div>
     <div id="locationStatus" style="display:none;font-size:12px;padding:8px;border-radius:8px;margin-bottom:10px"></div>
-    <div style="padding-top:12px;border-top:1px solid #FCE7F3">
-      <div style="font-size:12px;font-weight:700;color:#1a1a1a;margin-bottom:8px">검색 반경</div>
-      <div style="display:flex;gap:6px">
-        <div class="radtag sel" onclick="selRad(this,1000)">1km</div>
-        <div class="radtag" onclick="selRad(this,5000)">5km</div>
-        <div class="radtag" onclick="selRad(this,10000)">10km</div>
-      </div>
-    </div>
     <div style="margin-top:10px;background:#FFF9FB;border:1px solid #FCE7F3;border-radius:8px;padding:10px;font-size:12px;color:#888;line-height:1.7">
       💡 ON으로 켜면 추천 메뉴가 바뀔 때마다 근처 식당 목록을 자동으로 보여드려요
     </div>
@@ -1633,19 +1624,9 @@ function pickReg(r){selReg=r;document.querySelectorAll('.rgbtn').forEach(b=>b.cl
 function updT(r){const d=travelDB[r];if(!d)return;document.getElementById('travelContent').innerHTML=`<div class="tcard"><div class="ttitle">${r} 추천 메뉴</div><div class="titems">${d.items.map(i=>`<span class="titem${i.s?' sp':''}">${i.n}${i.s?' ★':''}</span>`).join('')}</div></div><div style="font-size:12px;color:#888;padding:6px 4px">💡 ${d.tip}</div>`;}
 function e(s){return s.replace(/'/g,"\\'");}
 
-let searchRadius = 1000;
-let menuFirstMode = false;
-let userLat = null;
-let userLng = null;
+const searchRadius = 10000; // 고정 10km
 
-function selRad(el, val){
-  document.querySelectorAll('.radtag').forEach(b=>b.classList.remove('sel'));
-  el.classList.add('sel');
-  searchRadius = val;
-  try{localStorage.setItem('mwomogji_radius', val);}catch(e){}
-  // 메뉴우선 켜져 있으면 현재 메뉴로 다시 검색
-  if(menuFirstMode && curMenu) fetchNearbyMenuRestaurants(curMenu);
-}
+
 
 // ── 위치 가져오기 ──
 function getLocation(){
@@ -1791,7 +1772,8 @@ const MENU_KEYWORDS = {
   '삼선 짬뽕':['삼선 짬뽕','중국집'],
   '왕새우 텐동':['새우 텐동','텐동'],
   '에비 마요':['에비 마요','새우 마요'],
-  '가니 크림 코로케':['가니 크림 코로케','고로케']
+  '가니 크림 코로케':['가니 크림 코로케','고로케'],
+  '소고기구이':['소고기','소고기구이']
 };
 
 async function fetchNearbyMenuRestaurants(menuName){
@@ -1856,6 +1838,7 @@ async function fetchNearbyMenuRestaurants(menuName){
     let finalData = null;
     let matchedQuery = null;
 
+    // 1단계: 10km 이내 순차 키워드 검색
     for(const q of queries){
       const res = await fetch(`https://kakao-proxy.angbeesh.workers.dev/?query=${encodeURIComponent(q)}&x=${userLng}&y=${userLat}&radius=${searchRadius}`);
       const data = await res.json();
@@ -1866,19 +1849,18 @@ async function fetchNearbyMenuRestaurants(menuName){
       }
     }
 
-    // 반경 내 없으면 반경 3배로 재시도 (첫 키워드로)
+    // 2단계: 없으면 20km로 확장해서 첫 키워드만 재시도
     if(!finalData){
-      const retryKw = queries[0];
-      const res = await fetch(`https://kakao-proxy.angbeesh.workers.dev/?query=${encodeURIComponent(retryKw)}&x=${userLng}&y=${userLat}&radius=${searchRadius*3}`);
+      const res = await fetch(`https://kakao-proxy.angbeesh.workers.dev/?query=${encodeURIComponent(queries[0])}&x=${userLng}&y=${userLat}&radius=${searchRadius*2}`);
       const data = await res.json();
       if(data.documents && data.documents.length > 0){
         finalData = data;
-        matchedQuery = retryKw;
+        matchedQuery = queries[0];
       }
     }
 
     if(!finalData || finalData.documents.length === 0){
-      list.innerHTML = `<div style="font-size:12px;color:#888;padding:8px 0;text-align:center">반경 ${searchRadius/1000}km 내 "${queries[0]}" 식당이 없어요 😢<br><span style="font-size:11px">반경을 늘려보거나 다른 메뉴를 시도해봐요</span></div>`;
+      list.innerHTML = `<div style="font-size:12px;color:#888;padding:8px 0;text-align:center">20km 이내에 "${queries[0]}" 식당이 없어요 😢</div>`;
       return;
     }
 
@@ -1949,15 +1931,6 @@ window.addEventListener('error', e=>{
 
 try {
   loadLS();
-  const r=localStorage.getItem('mwomogji_radius');
-  if(r){
-    searchRadius=parseInt(r);
-    const labelMap={1000:'1km',5000:'5km',10000:'10km'};
-    const label=labelMap[searchRadius]||'1km';
-    document.querySelectorAll('.radtag').forEach(b=>{
-      b.classList.toggle('sel', b.textContent.trim()===label);
-    });
-  }
   // 메뉴우선 상태 복원
   if(localStorage.getItem('mwomogji_menufirst')==='1'){
     const toggleEl=document.getElementById('toggleMenuFirst');
