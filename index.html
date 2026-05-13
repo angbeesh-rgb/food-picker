@@ -493,6 +493,17 @@ try {
     <button onclick="clearDislikes()" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1.5px solid #FBCFE8;background:#FDF2F8;color:#9D174D;font-size:12px;font-weight:700;cursor:pointer;min-height:36px">비추천 초기화</button>
   </div>
   <div class="card">
+    <div class="ctitle">📋 검색키워드 관리</div>
+    <div style="font-size:12px;color:#888;line-height:1.7;margin-bottom:10px">
+      엑셀 파일의 <b style="color:#1a1a1a">검색키워드 편집</b> 시트를 수정 후 업로드하면<br>식당 검색 키워드가 즉시 적용돼요.
+    </div>
+    <label for="xlsxUpload" style="display:block;padding:10px 14px;border-radius:8px;border:1.5px dashed #FBCFE8;background:#FDF2F8;color:#9D174D;font-size:12px;font-weight:700;cursor:pointer;text-align:center;min-height:36px;line-height:2">
+      📂 엑셀 파일 업로드 (.xlsx)
+    </label>
+    <input type="file" id="xlsxUpload" accept=".xlsx" style="display:none" onchange="importKeywordsFromXlsx(this)"/>
+    <div id="xlsxStatus" style="margin-top:8px;font-size:12px;display:none;padding:8px;border-radius:8px"></div>
+  </div>
+  <div class="card">
     <div class="ctitle">💡 생체리듬 인사이트</div>
     <div style="font-size:13px;color:#888;line-height:1.8">
       <div style="margin-bottom:6px">📊 <b style="color:#1a1a1a">점심 12~13시</b> — 단백질 섭취가 효율적인 시간대예요</div>
@@ -1127,48 +1138,49 @@ function calculateContextScore(menu){
     }
   }
   
-  // 5. 매운맛 선호도 (사용자 설정 반영)
+  return {score};
+}
+
+// 매운맛 선호도 멀티플라이어 (memScore 곱셈 밖에서 독립 적용)
+function getSpicyMultiplier(menu){
+  const tags = menu.tags||[];
   const userSpicy = getSpicyLevel(); // 0:안매움, 1:보통, 2:매콤, 3:매운맛
-  let menuSpicy = 1; // 기본 순한맛
+  let menuSpicy = 1;
   if(tags.includes('안매움')) menuSpicy = 0;
   else if(tags.includes('순한맛_매운')) menuSpicy = 1;
   else if(tags.includes('매콤')) menuSpicy = 2;
   else if(tags.includes('매운맛_강')) menuSpicy = 3;
-  
+
   const diff = Math.abs(userSpicy - menuSpicy);
-  if(diff===0){
-    score+=25; // 일치: 상향
-  } else if(diff===1){
-    score+=5; // 한 단계 차이는 약간 가산
-  } else if(diff===2){
-    score-=40; // 두 단계 차이는 강한 감점
-      } else if(diff===3){
-    // 정반대(예: 매운맛↔안매움)는 후보에서 완전 제외
-    return {score:-999};
-  }
-  
-  return {score};
+  if(diff===3) return 0;    // 정반대 → 완전 제외
+  if(diff===2) return 0.1;  // 두 단계 차이 → 거의 제외
+  if(diff===1) return 0.6;  // 한 단계 차이 → 확률 낮춤
+  return 2.5;               // 일치 → 2.5배 부스트
 }
 
 // 스마트 추천: 망각 곡선 + 컨텍스트 가중치 + 기존 dw(비추천)
 function smartRecommend(all){
-  const candidates=all.map(menu=>{
-    const memScore=memoryCurveScore(menu);          // 0~1
-    const dwPenalty=dw[menu.name]||0;                // 0~5
-    const dwWeight=dwPenalty>=5?0:Math.pow(0.5,dwPenalty);
-    const ctx=calculateContextScore(menu);
-    
-    // 최종 점수 = 기본 50점 + 컨텍스트 점수 + 망각 곡선 보너스 - 비추천 페널티
-    const totalScore=(50+ctx.score)*memScore*dwWeight;
-    
-    return {menu,score:totalScore,memScore};
-  });
+  const candidates=all
+    .filter(menu=>getSpicyMultiplier(menu)>0) // ① 정반대 메뉴 사전 제거
+    .map(menu=>{
+      const memScore=memoryCurveScore(menu);          // 0~1
+      const dwPenalty=dw[menu.name]||0;               // 0~5
+      const dwWeight=dwPenalty>=5?0:Math.pow(0.5,dwPenalty);
+      const ctx=calculateContextScore(menu);
+      const spicyMult=getSpicyMultiplier(menu);       // ② 매운맛 멀티플라이어 독립 적용
+
+      // 최종 점수 = (기본 50 + 날씨/시간 점수) * memScore * dw패널티 * 매운맛배율
+      const totalScore=(50+ctx.score)*memScore*dwWeight*spicyMult;
+
+      return {menu,score:totalScore,memScore};
+    });
   
   // 점수가 0 이상인 후보만
   const valid=candidates.filter(c=>c.score>0);
   if(!valid.length){
-    // 폴백: 기존 wRand 사용
-    return {menu:wRand(all)};
+    // 폴백: 매운맛 필터는 유지하면서 랜덤 추천
+    const spicyFiltered=all.filter(m=>getSpicyMultiplier(m)>0);
+    return {menu:wRand(spicyFiltered.length?spicyFiltered:all)};
   }
   
   // 가중치 기반 추첨 (상위 후보일수록 뽑힐 확률 높음)
@@ -1708,6 +1720,73 @@ async function onToggleMenuFirst(checked){
   }
 }
 
+// ── 커스텀 검색키워드 (엑셀 업로드로 덮어쓰기) ──
+// 구조: { '메뉴명': { primary: '1차키워드', fallback: '2차키워드or빈문자' } }
+let customKeywords = {};
+(function loadCustomKeywords(){
+  try{ customKeywords = JSON.parse(localStorage.getItem('customKeywords')||'{}'); }catch(e){}
+})();
+
+function getCustomKeyword(menuName){
+  return customKeywords[menuName] || null;
+}
+
+async function importKeywordsFromXlsx(input){
+  const file = input.files[0];
+  if(!file) return;
+  const status = document.getElementById('xlsxStatus');
+  status.style.display = 'block';
+  status.style.background = '#FEF3C7';
+  status.style.color = '#92400E';
+  status.textContent = '📖 파일 읽는 중...';
+  try{
+    const buf = await file.arrayBuffer();
+    // SheetJS (CDN) 없으면 직접 파싱
+    if(typeof XLSX === 'undefined'){
+      status.textContent = '⚠️ SheetJS 라이브러리가 필요해요. 페이지를 새로고침 후 다시 시도해주세요.';
+      return;
+    }
+    const wb = XLSX.read(buf, {type:'array'});
+    // '검색키워드 편집' 시트 찾기
+    const sheetName = wb.SheetNames.find(n=>n.includes('검색키워드')) || wb.SheetNames[1];
+    if(!sheetName){ status.textContent = '❌ "검색키워드 편집" 시트를 찾을 수 없어요'; return; }
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    // 헤더 행 찾기 (모드, 카테고리, 메뉴명, 현재 검색키워드...)
+    let headerRow = -1;
+    for(let i=0;i<rows.length;i++){
+      if(rows[i].includes('메뉴명') || rows[i].includes('메뉴 명')){ headerRow=i; break; }
+    }
+    if(headerRow<0){ status.textContent = '❌ 헤더 행을 찾을 수 없어요 (메뉴명 열 필요)'; return; }
+    const headers = rows[headerRow].map(h=>String(h).trim());
+    const nameIdx = headers.findIndex(h=>h.includes('메뉴명'));
+    const primaryIdx = headers.findIndex(h=>h.includes('검색키워드')||h.includes('1차'));
+    const fallbackIdx = headers.findIndex(h=>h.includes('폴백')||h.includes('2차'));
+    if(nameIdx<0||primaryIdx<0){ status.textContent = '❌ 메뉴명 또는 검색키워드 열을 찾을 수 없어요'; return; }
+    const newKw = {};
+    let count = 0;
+    for(let i=headerRow+1;i<rows.length;i++){
+      const row = rows[i];
+      const name = String(row[nameIdx]||'').trim();
+      const primary = String(row[primaryIdx]||'').trim();
+      if(!name||!primary) continue;
+      const fallback = fallbackIdx>=0 ? String(row[fallbackIdx]||'').trim() : '';
+      newKw[name] = {primary, fallback};
+      count++;
+    }
+    customKeywords = newKw;
+    localStorage.setItem('customKeywords', JSON.stringify(newKw));
+    status.style.background = '#DCFCE7';
+    status.style.color = '#166534';
+    status.textContent = `✅ ${count}개 메뉴 키워드가 적용됐어요!`;
+    input.value = '';
+  }catch(err){
+    status.style.background = '#FEE2E2';
+    status.style.color = '#991B1B';
+    status.textContent = '❌ 파일 읽기 오류: '+err.message;
+  }
+}
+
 // ── 메뉴명 → 카테고리 폴백 매핑 (메뉴명 검색 실패시에만 사용) ──
 function getCategoryFallback(menuName){
   const n = menuName.replace(/ \+.*/, '').replace(/\(.*?\)/,'').trim();
@@ -1788,8 +1867,10 @@ async function fetchNearbyMenuRestaurants(menuName){
 
   list.innerHTML = '<div style="font-size:12px;color:#888;padding:8px 0;text-align:center">🔍 가까운 식당 검색 중...</div>';
 
-  const cleanName = cleanMenuName(menuName);
-  const fallbackCategory = getCategoryFallback(menuName);
+  // 커스텀 키워드 우선 참조
+  const custom = getCustomKeyword(menuName);
+  const cleanName = custom ? custom.primary : cleanMenuName(menuName);
+  const fallbackCategory = custom ? (custom.fallback||null) : getCategoryFallback(menuName);
 
   // 검색 순서: 1차 메뉴명 직접 → 2차 폴백 카테고리 (없으면 스킵)
   const queries = [cleanName];
@@ -1939,5 +2020,6 @@ try {
   console.error('❌ 앱 초기화 실패:', e);
 }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </body>
 </html>
