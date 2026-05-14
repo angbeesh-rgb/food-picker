@@ -480,16 +480,13 @@ try {
     </div>
   </div>
   <div class="card">
-    <div class="ctitle">👎 비추천 메뉴 관리</div>
-    <div id="dislikeList"><span style="color:#bbb;font-size:13px">비추천 메뉴가 없어요</span></div>
-    <button onclick="clearDislikes()" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1.5px solid #FBCFE8;background:#FDF2F8;color:#9D174D;font-size:12px;font-weight:700;cursor:pointer;min-height:36px">비추천 초기화</button>
-  </div>
-  <div class="card">
-    <div class="ctitle">💡 생체리듬 인사이트</div>
-    <div style="font-size:13px;color:#888;line-height:1.8">
-      <div style="margin-bottom:6px">📊 <b style="color:#1a1a1a">점심 12~13시</b> — 단백질 섭취가 효율적인 시간대예요</div>
-      <div style="margin-bottom:6px">🌙 <b style="color:#1a1a1a">저녁 18시 이후</b> — 탄수화물보다 채소·단백질 위주가 좋아요</div>
-      <div>🔄 <b style="color:#1a1a1a">3~4일 주기</b> — 비슷한 음식이 반복되면 자동으로 변화 추천드려요</div>
+    <div class="ctitle" onclick="toggleDislikeSection()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+      <span>👎 비추천 메뉴 관리</span>
+      <span id="dislikeToggleIcon" style="font-size:12px;color:#aaa;transition:transform 0.2s">▲</span>
+    </div>
+    <div id="dislikeSection">
+      <div id="dislikeList" style="margin-top:8px"><span style="color:#bbb;font-size:13px">비추천 메뉴가 없어요</span></div>
+      <button onclick="clearDislikes()" style="margin-top:10px;padding:8px 14px;border-radius:8px;border:1.5px solid #FBCFE8;background:#FDF2F8;color:#9D174D;font-size:12px;font-weight:700;cursor:pointer;min-height:36px">비추천 초기화</button>
     </div>
   </div>
 </div>
@@ -659,7 +656,7 @@ function showTab(t){
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById(t).classList.add('active');
   ['rec','pop','log','rcp','shop','pref'].forEach((n,i)=>{if(n===t)document.querySelectorAll('.nav button')[i].classList.add('active');});
-  if(t==='pop'){renderPop();checkAdminMode();}if(t==='pref')renderDL();if(t==='shop')renderShop();if(t==='pref')restoreSpicyUI();
+  if(t==='pop'){renderPop();checkAdminMode();}if(t==='pref'){renderDL();restoreDislikeToggle();restoreSpicyUI();}if(t==='shop')renderShop();
 }
 function selMode(m){mode=m;document.querySelectorAll('.mbtn').forEach(b=>b.classList.remove('sel'));document.getElementById('mode-'+m).classList.add('sel');saveLS();}
 function toggleTag(el){
@@ -1209,11 +1206,31 @@ function recommend(){
   const result=smartRecommend(all);
   const p=result.menu;
   setMenu(p);
-  
 
-  
-  // 대안 메뉴도 스마트하게 (스마트 추천 상위 후보들)
-  const rest=all.filter(m=>m.name!==p.name).sort(()=>Math.random()-0.5).slice(0,4);
+  // 대안 메뉴: 메인 추천과 중복되지 않도록 이름 제외 후 점수 기반 셔플
+  const usedNames=new Set([p.name]);
+  const altCandidates=all
+    .filter(m=>!usedNames.has(m.name)&&getSpicyMultiplier(m)>0)
+    .map(m=>{
+      const dwP=dw[m.name]||0;
+      const dwW=dwP>=5?0:Math.pow(0.5,dwP);
+      const score=(50+calculateContextScore(m).score)*memoryCurveScore(m)*dwW*getSpicyMultiplier(m);
+      return {m,score};
+    })
+    .filter(c=>c.score>0)
+    .sort((a,b)=>b.score-a.score);
+
+  // 상위 12개에서 랜덤 셔플 후 4개 선택 (완전 랜덤 X, 어느정도 상위 후보 유지)
+  const pool=altCandidates.slice(0,12);
+  for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+  const rest=pool.slice(0,4).map(c=>c.m);
+
+  // 그래도 4개 미만이면 나머지 메뉴로 채움 (폴백)
+  if(rest.length<4){
+    const fallback=all.filter(m=>!usedNames.has(m.name)&&!rest.find(r=>r.name===m.name));
+    rest.push(...fallback.sort(()=>Math.random()-0.5).slice(0,4-rest.length));
+  }
+
   document.getElementById('altRow').innerHTML=rest.map(a=>`<div class="ac" onclick="pickAlt('${e(a.name)}','${e(a.desc)}',${a.cal},'${a.tags.join(",")}')"><div class="an">${a.name}</div><div class="aca">${a.cal} kcal</div></div>`).join('');
   document.getElementById('dbCount').textContent='현재 모드 메뉴 '+all.length+'개';rstV();
 }
@@ -1262,6 +1279,24 @@ function vote(up){
     saveLS();setTimeout(()=>recommend(),900);
   }
 }
+function toggleDislikeSection(){
+  const sec=document.getElementById('dislikeSection');
+  const icon=document.getElementById('dislikeToggleIcon');
+  const collapsed=sec.style.display==='none';
+  sec.style.display=collapsed?'':'none';
+  icon.textContent=collapsed?'▲':'▼';
+  try{localStorage.setItem('mwomogji_dislike_open',collapsed?'1':'0');}catch(e){}
+}
+function restoreDislikeToggle(){
+  try{
+    const v=localStorage.getItem('mwomogji_dislike_open');
+    if(v==='0'){
+      const sec=document.getElementById('dislikeSection');
+      const icon=document.getElementById('dislikeToggleIcon');
+      if(sec){sec.style.display='none';icon.textContent='▼';}
+    }
+  }catch(e){}
+}
 function renderDL(){
   const el=document.getElementById('dislikeList');const en=Object.entries(dw).filter(([,v])=>v>0);
   if(!en.length){el.innerHTML='<span style="color:#bbb;font-size:13px">비추천 메뉴가 없어요</span>';return;}
@@ -1270,8 +1305,13 @@ function renderDL(){
 function clearDislikes(){dw={};saveLS();renderDL();}
 function renderPop(){
   const now=new Date();
-  document.getElementById('popTime').textContent=now.toLocaleDateString('ko-KR',{month:'long',day:'numeric'})+' '+now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})+' 기준';
+  // KST 기준 날짜 표시
+  const kst=new Date(now.getTime()+(9*60-now.getTimezoneOffset())*60000);
+  document.getElementById('popTime').textContent=kst.toLocaleDateString('ko-KR',{month:'long',day:'numeric'})+' '+kst.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})+' 기준';
   
+  // 자정 넘김 감지: getLV() 호출로 날짜 리셋 강제 적용
+  getLV();
+
   // Firebase는 이미 오늘 데이터만 반환하도록 수정됨
   if(typeof window.fbGetVotes === 'function'){
     try {
@@ -1993,6 +2033,7 @@ window.addEventListener('error', e=>{
 
 try {
   loadLS();
+  restoreDislikeToggle();
   // 메뉴우선 상태 복원
   if(localStorage.getItem('mwomogji_menufirst')==='1'){
     const toggleEl=document.getElementById('toggleMenuFirst');
