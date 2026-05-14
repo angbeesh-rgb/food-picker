@@ -6,7 +6,9 @@
 <meta name="theme-color" content="#F9A8D4"/>
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍱</text></svg>"/>
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png"/>
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png"/>
+<link rel="apple-touch-icon" href="icon-apple.png"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
 <meta name="apple-mobile-web-app-title" content="뭐먹지"/>
 <title>오늘 뭐먹지?</title>
@@ -203,9 +205,11 @@ try {
   }
 
   // 👍 투표 (날짜별 + 날씨 통계 포함)
-  window.fbVoteUp = async function(menuName, weatherData) {
+  // recommendedAtDate: 메뉴 추천 받은 시점의 KST 날짜 (자정 정합성 보장)
+  window.fbVoteUp = async function(menuName, weatherData, recommendedAtDate) {
     try {
-      const today = getTodayDateKey();
+      // 추천 받은 시점의 날짜를 우선 사용 (자정 직후 투표 시 어제 메뉴를 어제로 카운트)
+      const today = recommendedAtDate || getTodayDateKey();
       const cleanName = sanitizeMenu(menuName);
       
       // 1. 오늘의 메뉴별 카운트 증가
@@ -217,17 +221,20 @@ try {
         const statsRef = ref(db, `stats/${today}/votes`);
         const timestamp = Date.now();
         const newVoteRef = ref(db, `stats/${today}/votes/${timestamp}`);
+        // KST 기준 시간/요일로 통계 통일
+        const now = new Date();
+        const kst = new Date(now.getTime() + (9*60 + now.getTimezoneOffset()) * 60000);
         await set(newVoteRef, {
           menu: menuName,
           weather: weatherData.weather || 'unknown',
           temp: weatherData.temp !== null ? weatherData.temp : null,
-          hour: new Date().getHours(),
-          dayOfWeek: new Date().getDay(),
+          hour: kst.getUTCHours(),
+          dayOfWeek: kst.getUTCDay(),
           ts: timestamp
         });
       }
       
-      console.log('✅ 투표 저장:', menuName, '날씨:', weatherData?.weather);
+      console.log('✅ 투표 저장:', menuName, '날씨:', weatherData?.weather, '날짜:', today);
     } catch(e) {
       console.error('[fbVoteUp] Firebase 쓰기 실패:', e);
     }
@@ -250,24 +257,6 @@ try {
     } catch(e) {
       console.error('[fbGetVotes] Firebase 읽기 실패:', e);
       callback({});
-    }
-  };
-
-  // 실시간 구독 (오늘 데이터만)
-  window.fbListenVotes = function(callback) {
-    try {
-      const today = getTodayDateKey();
-      const dailyRef = ref(db, `daily/${today}/menus`);
-      onValue(dailyRef, (snapshot) => {
-        const data = snapshot.val() || {};
-        const restored = {};
-        Object.entries(data).forEach(([k, v]) => {
-          restored[k.replace(/_/g, ' ')] = v;
-        });
-        callback(restored);
-      });
-    } catch(e) {
-      console.error('[fbListenVotes] Firebase 구독 실패:', e);
     }
   };
 
@@ -322,7 +311,6 @@ try {
   // Firebase 없이도 앱이 동작하도록 폴백
   window.fbVoteUp = function() {};
   window.fbGetVotes = function(cb) { cb({}); };
-  window.fbListenVotes = function() {};
   window.fbGetVotesByDate = async function() { return {}; };
   window.fbGetStatsByDate = async function() { return {}; };
   window.fbGetAllDates = async function() { return []; };
@@ -336,6 +324,7 @@ try {
 
 <!-- 추천 -->
 <div id="rec" class="sec active">
+  <div id="poolNotice" style="display:none"></div>
   <div class="card">
     <div class="ctitle">✨ 오늘의 추천</div>
     <div class="rcard">
@@ -623,7 +612,37 @@ function loadLS(){
   }catch(e){}
 }
 function saveLS(){
-  try{localStorage.setItem('mwomogji_state',JSON.stringify({meals,rcps,dw,mode,recentRecs}));}catch(e){}
+  // 1년 이상 된 식단 기록 자동 정리 (QuotaExceeded 방지)
+  try{
+    const oneYearAgo = Date.now() - 365*24*60*60*1000;
+    const beforeCount = meals.length;
+    meals = meals.filter(m => !m.ts || m.ts >= oneYearAgo);
+    // 그래도 너무 많으면 최근 1000개만 유지
+    if(meals.length > 1000) meals = meals.slice(0, 1000);
+    if(beforeCount !== meals.length){
+      console.log(`[saveLS] 오래된 식단 ${beforeCount - meals.length}개 자동 정리`);
+    }
+  }catch(e){}
+
+  try{
+    localStorage.setItem('mwomogji_state',JSON.stringify({meals,rcps,dw,mode,recentRecs}));
+  }catch(e){
+    // 용량 초과 시 식단 절반 삭제 후 재시도
+    if(e && (e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014)){
+      console.warn('[saveLS] localStorage 용량 초과, 오래된 식단 절반 자동 삭제');
+      try{
+        meals = meals.slice(0, Math.floor(meals.length/2));
+        localStorage.setItem('mwomogji_state',JSON.stringify({meals,rcps,dw,mode,recentRecs}));
+        // 사용자에게 알림 (1회만)
+        if(!window._quotaWarned){
+          window._quotaWarned = true;
+          setTimeout(()=>alert('💾 저장 공간이 거의 가득 차서 오래된 식단 기록을 자동으로 정리했어요. 중요한 기록은 미리 백업해주세요.'), 100);
+        }
+      }catch(e2){
+        console.error('[saveLS] 재시도 실패:', e2);
+      }
+    }
+  }
 }
 // 전역: 마지막 투표 날짜 (이미 resetVotesIfNewDay에서 관리하지만, renderPop에서도 체크)
 function getTodayPopKey(){
@@ -657,7 +676,7 @@ function showTab(t){
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
   document.getElementById(t).classList.add('active');
   ['rec','pop','log','rcp','shop','pref'].forEach((n,i)=>{if(n===t)document.querySelectorAll('.nav button')[i].classList.add('active');});
-  if(t==='pop'){renderPop();checkAdminMode();}if(t==='pref'){renderDL();restoreDislikeToggle();restoreSpicyUI();}if(t==='shop')renderShop();
+  if(t==='pop'){renderPop();checkAdminMode().catch(()=>{});}if(t==='pref'){renderDL();restoreDislikeToggle();restoreSpicyUI();}if(t==='shop')renderShop();
 }
 function selMode(m){mode=m;document.querySelectorAll('.mbtn').forEach(b=>b.classList.remove('sel'));document.getElementById('mode-'+m).classList.add('sel');saveLS();}
 function toggleTag(el){
@@ -812,7 +831,9 @@ function renderShop(){
   }
 }
 
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// eh: escapeHtml의 짧은 별칭 (XSS 방어용. innerHTML에 사용자 입력값 넣을 때 사용)
+const eh = escapeHtml;
 
 // 🍳 키워드 매칭 기반 레시피 추천
 function recommendRecipe(){
@@ -902,7 +923,7 @@ function recommendRecipe(){
       <div style="padding:12px;border:1.5px solid #FBCFE8;border-radius:10px;margin-bottom:8px;background:#FDF2F8">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <span style="font-size:15px;font-weight:800;color:#9D174D">🏠 ${escapeHtml(r.name)}</span>
-          <span style="font-size:11px;color:#BE185D;background:#FCE7F3;padding:2px 8px;border-radius:10px">${r.cuisine||''}${r.cal?' · '+r.cal+'kcal':''}</span>
+          <span style="font-size:11px;color:#BE185D;background:#FCE7F3;padding:2px 8px;border-radius:10px">${eh(r.cuisine||'')}${r.cal?' · '+r.cal+'kcal':''}</span>
         </div>
         <div style="font-size:12px;color:#BE185D;margin-bottom:6px">
           ✨ 보유 재료: <strong>${r.matched.map(escapeHtml).join(', ')}</strong>
@@ -1060,8 +1081,10 @@ function memoryCurveScore(menu){
 let envData={weather:null,temp:null,hour:null,dayOfWeek:null};
 function updateEnvData(){
   const now=new Date();
-  envData.hour=now.getHours();
-  envData.dayOfWeek=now.getDay(); // 0=일, 1=월, ...
+  // KST(UTC+9) 기준 시간/요일로 통일: 해외 사용자도 한국 식문화 기준으로 추천
+  const kst = new Date(now.getTime() + (9*60 + now.getTimezoneOffset()) * 60000);
+  envData.hour = kst.getUTCHours();
+  envData.dayOfWeek = kst.getUTCDay(); // 0=일, 1=월, ...
 }
 
 // 날씨 가져오기 (Open-Meteo - 무료, API 키 불필요!)
@@ -1274,6 +1297,21 @@ function wRand(all){
 }
 function recommend(){
   const all=getMenus();if(!all.length)return;
+
+  // 매운맛/모드/카테고리 조합으로 인해 풀이 너무 좁으면 사용자에게 안내
+  // spicy > 0 인 메뉴(=실제로 추천 가능한 메뉴) 개수 체크
+  const validForSpicy = all.filter(m => getSpicyMultiplier(m) > 0);
+  const poolNoticeEl = document.getElementById('poolNotice');
+  if(poolNoticeEl){
+    if(validForSpicy.length < 5){
+      const spicyTxt = ['안매움','보통','매콤','매운맛 강'][getSpicyLevel()] || '';
+      const modeTxt = {normal:'균형',diet:'다이어트',happy:'행복해'}[mode] || mode;
+      poolNoticeEl.innerHTML = `<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:10px;padding:10px 12px;margin:8px 0;font-size:12px;color:#92400E;line-height:1.5">⚠️ <strong>${modeTxt} + ${spicyTxt}</strong> 조합은 메뉴가 ${validForSpicy.length}개뿐이에요. 더 다양한 추천을 원하시면 <strong>음식 종류를 추가</strong>하거나 <strong>매운맛 설정</strong>을 바꿔보세요.</div>`;
+      poolNoticeEl.style.display = 'block';
+    } else {
+      poolNoticeEl.style.display = 'none';
+    }
+  }
   
   // 🧠 스마트 추천 (망각 곡선 + 컨텍스트 가중치)
   const result=smartRecommend(all);
@@ -1310,22 +1348,25 @@ function recommend(){
     rest.push(...fallback.sort(()=>Math.random()-0.5).slice(0,4-rest.length));
   }
 
-  document.getElementById('altRow').innerHTML=rest.map(a=>`<div class="ac" onclick="pickAlt('${e(a.name)}','${e(a.desc)}',${a.cal},'${a.tags.join(",")}')"><div class="an">${a.name}</div><div class="aca">${a.cal} kcal</div></div>`).join('');
+  document.getElementById('altRow').innerHTML=rest.map(a=>`<div class="ac" onclick="pickAlt('${e(a.name)}','${e(a.desc)}',${a.cal},'${a.tags.join(",")}')"><div class="an">${eh(a.name)}</div><div class="aca">${a.cal} kcal</div></div>`).join('');
   document.getElementById('dbCount').textContent='현재 모드 메뉴 '+all.length+'개';rstV();
 }
 
 
-function setMenu(m){curMenu=m.name;window.curMenuData=m;document.getElementById('recName').textContent=m.name;document.getElementById('recDesc').textContent=m.desc;document.getElementById('recCal').textContent='약 '+m.cal+' kcal';document.getElementById('recTags').innerHTML=m.tags.map(t=>`<span class="rtag">${t}</span>`).join('');if(menuFirstMode)fetchNearbyMenuRestaurants(m.name);else document.getElementById('menuFirstWrap').style.display='none';}
-function pickAlt(name,desc,cal,tags){curMenu=name;window.curMenuData={name,desc,cal,tags:tags.split(',')};document.getElementById('recName').textContent=name;document.getElementById('recDesc').textContent=desc;document.getElementById('recCal').textContent='약 '+cal+' kcal';document.getElementById('recTags').innerHTML=tags.split(',').map(t=>`<span class="rtag">${t}</span>`).join('');rstV();if(menuFirstMode)fetchNearbyMenuRestaurants(name);else document.getElementById('menuFirstWrap').style.display='none';}
+function setMenu(m){curMenu=m.name;window.curMenuData={...m,recommendedAtDate:todayKey(),recommendedAtTs:Date.now()};document.getElementById('recName').textContent=m.name;document.getElementById('recDesc').textContent=m.desc;document.getElementById('recCal').textContent='약 '+m.cal+' kcal';document.getElementById('recTags').innerHTML=m.tags.map(t=>`<span class="rtag">${eh(t)}</span>`).join('');if(menuFirstMode)fetchNearbyMenuRestaurants(m.name);else document.getElementById('menuFirstWrap').style.display='none';}
+function pickAlt(name,desc,cal,tags){curMenu=name;window.curMenuData={name,desc,cal,tags:tags.split(','),recommendedAtDate:todayKey(),recommendedAtTs:Date.now()};document.getElementById('recName').textContent=name;document.getElementById('recDesc').textContent=desc;document.getElementById('recCal').textContent='약 '+cal+' kcal';document.getElementById('recTags').innerHTML=tags.split(',').map(t=>`<span class="rtag">${eh(t)}</span>`).join('');rstV();if(menuFirstMode)fetchNearbyMenuRestaurants(name);else document.getElementById('menuFirstWrap').style.display='none';}
 function rstV(){document.getElementById('voteUp').classList.remove('active');document.getElementById('voteDown').classList.remove('active');const fb=document.getElementById('voteFb');fb.className='vfb';fb.textContent='';}
 function vote(up){
   if(!curMenu)return;const fb=document.getElementById('voteFb');
+  // 추천 시점의 KST 날짜 (자정 정합성: 23:59에 추천받고 00:01에 투표해도 어제로 집계)
+  const recDate = window.curMenuData?.recommendedAtDate || todayKey();
+  const recTs = window.curMenuData?.recommendedAtTs || Date.now();
   if(up){
     document.getElementById('voteUp').classList.add('active');document.getElementById('voteDown').classList.remove('active');
     fb.className='vfb good';fb.textContent='👍 좋아요! 인기 메뉴로 집계될게요 😊';
     if(dw[curMenu]){dw[curMenu]=Math.max(0,dw[curMenu]-1);if(dw[curMenu]===0)delete dw[curMenu];}
-    // 식단일기는 항상 등록
-    meals.unshift({name:curMenu,cal:(window.curMenuData?.cal||0),type:'👍 추천메뉴',date:todayKey(),ts:Date.now()});
+    // 식단일기: 추천받은 시점의 날짜로 기록 (자정 넘긴 뒤에도 어제 식사로)
+    meals.unshift({name:curMenu,cal:(window.curMenuData?.cal||0),type:'👍 추천메뉴',date:recDate,ts:recTs});
     renderLog();
     saveLS();
     // 로컬 카운트 (Firebase 폴백용)
@@ -1337,11 +1378,11 @@ function vote(up){
     } else {
       if(typeof window.fbVoteUp === 'function'){
         try { 
-          // 날씨 통계 함께 전송
+          // 날씨 통계 + 추천 시점 날짜 함께 전송
           window.fbVoteUp(curMenu, {
             weather: envData.weather,
             temp: envData.temp
-          }); 
+          }, recDate); 
         } catch(e){ console.error('[vote] Firebase 집계 실패:', e); }
       } else {
         console.warn('[vote] Firebase 미로드, 로컬에만 집계됨');
@@ -1379,7 +1420,7 @@ function restoreDislikeToggle(){
 function renderDL(){
   const el=document.getElementById('dislikeList');const en=Object.entries(dw).filter(([,v])=>v>0);
   if(!en.length){el.innerHTML='<span style="color:#bbb;font-size:13px">비추천 메뉴가 없어요</span>';return;}
-  el.innerHTML=en.map(([n,p])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #FCE7F3"><span style="font-size:13px">${n}</span><span style="font-size:11px;color:#F87171">출현 ${Math.round(Math.pow(0.5,p)*100)}%</span></div>`).join('');
+  el.innerHTML=en.map(([n,p])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #FCE7F3"><span style="font-size:13px">${eh(n)}</span><span style="font-size:11px;color:#F87171">출현 ${Math.round(Math.pow(0.5,p)*100)}%</span></div>`).join('');
 }
 function clearDislikes(){dw={};saveLS();renderDL();}
 function renderPop(){
@@ -1411,26 +1452,50 @@ function _renderPopData(lv){const now=new Date();
   const s=Object.entries(lv).sort((a,b)=>b[1]-a[1]).slice(0,10);const list=document.getElementById('rankList');
   if(!s.length){list.innerHTML='<div class="elog">아직 추천 데이터가 없어요.<br>추천탭에서 👍 버튼을 눌러봐요!</div>';document.getElementById('popRec').innerHTML='아직 데이터가 없어요.';return;}
   const mx=s[0][1];const rc=i=>i===0?'rk1':i===1?'rk2':i===2?'rk3':'rko';const md=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1;
-  list.innerHTML=s.map(([nm,cnt],i)=>`<div class="rki"><div class="rkn ${rc(i)}">${md(i)}</div><div class="rknm">${nm}</div><div class="bw"><div class="bb" style="width:${Math.round(cnt/mx*100)}%"></div></div><div class="rkcnt">${cnt}👍</div></div>`).join('');
+  list.innerHTML=s.map(([nm,cnt],i)=>`<div class="rki"><div class="rkn ${rc(i)}">${md(i)}</div><div class="rknm">${eh(nm)}</div><div class="bw"><div class="bb" style="width:${Math.round(cnt/mx*100)}%"></div></div><div class="rkcnt">${cnt}👍</div></div>`).join('');
   const top=s[0][0];const all=getMenus();const f=all.find(m=>m.name===top);
-  if(f)document.getElementById('popRec').innerHTML=`<div style="font-size:18px;font-weight:800;color:#7C2D5A;margin-bottom:4px">${f.name}</div><div style="font-size:12px;color:#BE185D;margin-bottom:6px">${f.desc}</div><div style="font-size:12px;color:#888">약 ${f.cal} kcal · 👍 ${s[0][1]}표 🔥</div>`;
-  else document.getElementById('popRec').innerHTML=`<div style="font-size:16px;font-weight:700;color:#7C2D5A">${top}</div><div style="font-size:12px;color:#888;margin-top:4px">👍 ${s[0][1]}표 🔥</div>`;
+  if(f)document.getElementById('popRec').innerHTML=`<div style="font-size:18px;font-weight:800;color:#7C2D5A;margin-bottom:4px">${eh(f.name)}</div><div style="font-size:12px;color:#BE185D;margin-bottom:6px">${eh(f.desc)}</div><div style="font-size:12px;color:#888">약 ${f.cal} kcal · 👍 ${s[0][1]}표 🔥</div>`;
+  else document.getElementById('popRec').innerHTML=`<div style="font-size:16px;font-weight:700;color:#7C2D5A">${eh(top)}</div><div style="font-size:12px;color:#888;margin-top:4px">👍 ${s[0][1]}표 🔥</div>`;
 }
 
 // ───────────────────────────────────────
 // 🔒 관리자 전용 모드 (URL: ?admin=비밀번호)
 // ───────────────────────────────────────
-const ADMIN_PASSWORD='angbeesh2024'; // 🔑 관리자 비밀번호 (필요시 변경)
+// 비밀번호 평문 대신 PBKDF2-SHA256 해시만 코드에 저장 (XSS/소스보기 방어)
+// 비밀번호 변경 시: 새 해시 생성 후 ADMIN_PWD_HASH만 교체
+const ADMIN_PWD_HASH = '106cb8a242b5a6c64f3bb7252bacb5ccfc4a12eb2dff0e644150493a17f27141';
+const ADMIN_PWD_SALT = 'mwomogji_2026';
+const ADMIN_PWD_ITER = 10000;
 
-function checkAdminMode(){
-  // URL 파라미터 방식: ?admin=비밀번호
+// PBKDF2-SHA256 해시 계산 (브라우저 SubtleCrypto 사용)
+async function _hashAdminPwd(pwd){
+  try{
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw', enc.encode(pwd), {name:'PBKDF2'}, false, ['deriveBits']
+    );
+    const bits = await crypto.subtle.deriveBits(
+      {name:'PBKDF2', salt:enc.encode(ADMIN_PWD_SALT), iterations:ADMIN_PWD_ITER, hash:'SHA-256'},
+      keyMaterial, 256
+    );
+    return Array.from(new Uint8Array(bits)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch(e){
+    console.warn('[admin] crypto.subtle 실패:', e);
+    return null;
+  }
+}
+
+async function checkAdminMode(){
+  // URL 파라미터 방식: ?admin=비밀번호  또는  #admin=비밀번호
   const params=new URLSearchParams(window.location.search);
   const pwd=params.get('admin');
-  // Hash 방식도 지원: #admin=비밀번호
   const hashParams=new URLSearchParams(window.location.hash.replace('#',''));
   const hashPwd=hashParams.get('admin');
-  
-  if(pwd===ADMIN_PASSWORD||hashPwd===ADMIN_PASSWORD){
+  const input = pwd || hashPwd;
+  if(!input) return false;
+
+  const calc = await _hashAdminPwd(input);
+  if(calc === ADMIN_PWD_HASH){
     document.body.classList.add('admin-mode');
     const adminPanel=document.getElementById('adminPanel');
     if(adminPanel) adminPanel.style.display='block';
@@ -1566,13 +1631,13 @@ async function adminShowAllDates(){
 }
 function switchRcp(t,el){document.querySelectorAll('#rcp .stab').forEach(b=>b.classList.remove('active'));el.classList.add('active');document.getElementById('rcp-list').style.display=t==='list'?'block':'none';document.getElementById('rcp-add').style.display=t==='add'?'block':'none';if(t==='list')renderRcps();}
 function addIng(){const v=document.getElementById('ingInput').value.trim();if(!v)return;ings.push(v);document.getElementById('ingInput').value='';renderIngs();}
-function renderIngs(){document.getElementById('ingList').innerHTML=ings.map((ig,i)=>`<span class="itag">${ig} <span onclick="rmIng(${i})" style="cursor:pointer;opacity:0.6">×</span></span>`).join('');}
+function renderIngs(){document.getElementById('ingList').innerHTML=ings.map((ig,i)=>`<span class="itag">${eh(ig)} <span onclick="rmIng(${i})" style="cursor:pointer;opacity:0.6">×</span></span>`).join('');}
 function rmIng(i){ings.splice(i,1);renderIngs();}
 function addStep(){const v=document.getElementById('stepInput').value.trim();if(!v)return;steps.push(v);document.getElementById('stepInput').value='';renderSteps();}
-function renderSteps(){document.getElementById('stepList').innerHTML=steps.map((s,i)=>`<div class="step"><div class="stepn">${i+1}</div><div style="flex:1;font-size:12px;color:#888">${s} <span onclick="rmStep(${i})" style="cursor:pointer;color:#F87171;font-size:11px">삭제</span></div></div>`).join('');}
+function renderSteps(){document.getElementById('stepList').innerHTML=steps.map((s,i)=>`<div class="step"><div class="stepn">${i+1}</div><div style="flex:1;font-size:12px;color:#888">${eh(s)} <span onclick="rmStep(${i})" style="cursor:pointer;color:#F87171;font-size:11px">삭제</span></div></div>`).join('');}
 function rmStep(i){steps.splice(i,1);renderSteps();}
 function saveRcp(){const n=document.getElementById('rName').value.trim();if(!n){alert('메뉴 이름을 입력해주세요!');return;}const c=parseInt(document.getElementById('rCal').value)||0;const cu=document.getElementById('rCuisine').value;rcps.push({name:n,cal:c,cuisine:cu,ingredients:[...ings],steps:[...steps]});ings=[];steps=[];document.getElementById('rName').value='';document.getElementById('rCal').value='';document.getElementById('ingList').innerHTML='';document.getElementById('stepList').innerHTML='';saveLS();renderRcps();const tabs=document.querySelectorAll('#rcp .stab');switchRcp('list',tabs[0]);tabs[1].classList.remove('active');}
-function renderRcps(){const el=document.getElementById('rcpCards');if(!rcps.length){el.innerHTML='<div class="elog" style="padding:20px 0">등록된 집밥 레시피가 없어요<br><span style="font-size:12px">오른쪽 탭에서 추가해봐요!</span></div>';return;}el.innerHTML=rcps.map((r,i)=>`<div class="rcpcard" id="rc-${i}"><div class="rcpname" onclick="togRcp(${i})"><span>🏠 ${r.name}</span><span id="rc-arrow-${i}">▼</span></div><div class="rcpmeta">${r.cuisine} · ${r.cal?r.cal+' kcal':'칼로리 미입력'}</div><div class="rcpdetail" id="rc-detail-${i}">${r.ingredients.length?`<h4>🥬 재료</h4><div>${r.ingredients.map(ig=>`<span class="itag">${ig}</span>`).join('')}</div>`:''} ${r.steps.length?`<h4>👨‍🍳 조리 순서</h4>${r.steps.map((s,j)=>`<div class="step"><div class="stepn">${j+1}</div><div style="flex:1;font-size:12px">${s}</div></div>`).join('')}`:''}<div style="display:flex;gap:6px;margin-top:10px">${r.ingredients.length?`<button class="rcpdel" style="background:#FDF2F8;color:#9D174D;border:1.5px solid #FBCFE8;flex:1" onclick="addRecipeIngredientsToShop(${i})">🛒 재료 장보기 담기</button>`:''}<button class="rcpdel" onclick="delRcp(${i})" style="flex:${r.ingredients.length?'0 0 auto':'1'}">🗑️ 삭제</button></div></div></div>`).join('');}
+function renderRcps(){const el=document.getElementById('rcpCards');if(!rcps.length){el.innerHTML='<div class="elog" style="padding:20px 0">등록된 집밥 레시피가 없어요<br><span style="font-size:12px">오른쪽 탭에서 추가해봐요!</span></div>';return;}el.innerHTML=rcps.map((r,i)=>`<div class="rcpcard" id="rc-${i}"><div class="rcpname" onclick="togRcp(${i})"><span>🏠 ${eh(r.name)}</span><span id="rc-arrow-${i}">▼</span></div><div class="rcpmeta">${eh(r.cuisine)} · ${r.cal?r.cal+' kcal':'칼로리 미입력'}</div><div class="rcpdetail" id="rc-detail-${i}">${r.ingredients.length?`<h4>🥬 재료</h4><div>${r.ingredients.map(ig=>`<span class="itag">${eh(ig)}</span>`).join('')}</div>`:''} ${r.steps.length?`<h4>👨‍🍳 조리 순서</h4>${r.steps.map((s,j)=>`<div class="step"><div class="stepn">${j+1}</div><div style="flex:1;font-size:12px">${eh(s)}</div></div>`).join('')}`:''}<div style="display:flex;gap:6px;margin-top:10px">${r.ingredients.length?`<button class="rcpdel" style="background:#FDF2F8;color:#9D174D;border:1.5px solid #FBCFE8;flex:1" onclick="addRecipeIngredientsToShop(${i})">🛒 재료 장보기 담기</button>`:''}<button class="rcpdel" onclick="delRcp(${i})" style="flex:${r.ingredients.length?'0 0 auto':'1'}">🗑️ 삭제</button></div></div></div>`).join('');}
 
 // 레시피 재료를 장보기 구매목록에 일괄 추가
 function addRecipeIngredientsToShop(idx){
@@ -1615,7 +1680,7 @@ function showToast(message){
 }
 function togRcp(i){const d=document.getElementById('rc-detail-'+i);const a=document.getElementById('rc-arrow-'+i);const c=document.getElementById('rc-'+i);const o=d.classList.toggle('show');a.textContent=o?'▲':'▼';c.classList.toggle('exp',o);}
 function delRcp(i){rcps.splice(i,1);saveLS();renderRcps();}
-function recHome(){if(!rcps.length){document.getElementById('homeRec').innerHTML='레시피를 먼저 등록해봐요!';return;}const r=rcps[Math.floor(Math.random()*rcps.length)];document.getElementById('homeRec').innerHTML=`<div style="font-size:18px;font-weight:800;color:#7C2D5A;margin-bottom:4px">🏠 ${r.name}</div><div style="font-size:12px;color:#BE185D;margin-bottom:6px">${r.cuisine} · ${r.cal?r.cal+' kcal':'칼로리 미입력'}</div>${r.ingredients.length?`<div style="margin-bottom:6px">${r.ingredients.map(ig=>`<span class="itag">${ig}</span>`).join('')}</div>`:''}${r.steps.length?`<div style="font-size:12px;color:#888">조리 ${r.steps.length}단계</div>`:''}`;}
+function recHome(){if(!rcps.length){document.getElementById('homeRec').innerHTML='레시피를 먼저 등록해봐요!';return;}const r=rcps[Math.floor(Math.random()*rcps.length)];document.getElementById('homeRec').innerHTML=`<div style="font-size:18px;font-weight:800;color:#7C2D5A;margin-bottom:4px">🏠 ${eh(r.name)}</div><div style="font-size:12px;color:#BE185D;margin-bottom:6px">${eh(r.cuisine)} · ${r.cal?r.cal+' kcal':'칼로리 미입력'}</div>${r.ingredients.length?`<div style="margin-bottom:6px">${r.ingredients.map(ig=>`<span class="itag">${eh(ig)}</span>`).join('')}</div>`:''}${r.steps.length?`<div style="font-size:12px;color:#888">조리 ${r.steps.length}단계</div>`:''}`;}
 function renderLog(){
 const list=document.getElementById('logList');
 const today=todayKey();
@@ -1629,7 +1694,7 @@ if(!todayMeals.length){
 }
 list.innerHTML=`<div style="margin-bottom:16px">
  <div style="font-size:13px;font-weight:800;color:#BE185D;margin-bottom:8px">${today}</div>
- ${todayMeals.map(m=>`<div class="li"><div><div class="lm">${m.name}</div><div class="linfo">${m.type}</div></div><div class="lr"><div class="lcal">${m.cal} kcal</div><button class="db" onclick="delM(${m.idx})">×</button></div></div>`).join('')}
+ ${todayMeals.map(m=>`<div class="li"><div><div class="lm">${eh(m.name)}</div><div class="linfo">${eh(m.type)}</div></div><div class="lr"><div class="lcal">${m.cal} kcal</div><button class="db" onclick="delM(${m.idx})">×</button></div></div>`).join('')}
  </div>`;
 document.getElementById('todayCal').textContent=todayMeals.reduce((s,m)=>s+m.cal,0).toLocaleString();
 document.getElementById('mealCount').textContent=todayMeals.length;
@@ -1785,8 +1850,8 @@ function showCalDayDetail(dateStr){
   listEl.innerHTML=dayMeals.map(m=>`
     <div class="li">
       <div>
-        <div class="lm">${m.name}</div>
-        <div class="linfo">${m.type}</div>
+        <div class="lm">${eh(m.name)}</div>
+        <div class="linfo">${eh(m.type)}</div>
       </div>
       <div class="lr">
         <div class="lcal">${m.cal} kcal</div>
@@ -1812,7 +1877,11 @@ let userLng = null;
 // ── 위치 가져오기 ──
 function getLocation(){
   return new Promise((resolve, reject)=>{
-    if(!navigator.geolocation){ reject('위치 서비스를 지원하지 않는 기기예요'); return; }
+    if(!navigator.geolocation){ 
+      showLocationToast('위치 서비스를 지원하지 않는 기기예요. 일부 기능이 제한됩니다.', 'warn');
+      reject('위치 서비스를 지원하지 않는 기기예요'); 
+      return; 
+    }
     navigator.geolocation.getCurrentPosition(
       pos=>{ 
         userLat=pos.coords.latitude; 
@@ -1823,10 +1892,38 @@ function getLocation(){
         fetchWeather().catch(()=>{});
         resolve(); 
       },
-      ()=>reject('위치 권한을 허용해주세요'),
+      (err)=>{
+        // 에러 타입별 안내 (1: 권한거부, 2: 위치불가, 3: 타임아웃)
+        let msg = '위치를 가져올 수 없어요';
+        if(err && err.code === 1){
+          msg = '📍 위치 권한이 거부됐어요. 날씨·식당 검색은 제한되지만 메뉴 추천은 정상 작동해요';
+        } else if(err && err.code === 2){
+          msg = '📍 현재 위치를 찾을 수 없어요. 잠시 후 다시 시도해주세요';
+        } else if(err && err.code === 3){
+          msg = '📍 위치 확인 시간 초과. 다음에 다시 시도해주세요';
+        }
+        showLocationToast(msg, 'warn');
+        reject(msg);
+      },
       {timeout:10000}
     );
   });
+}
+
+// 토스트 메시지 (위치/날씨/일반 알림용)
+function showLocationToast(msg, level){
+  let toast = document.getElementById('appToast');
+  if(!toast){
+    toast = document.createElement('div');
+    toast.id = 'appToast';
+    toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(124,45,90,0.95);color:#fff;padding:12px 18px;border-radius:24px;font-size:13px;font-weight:600;z-index:9999;max-width:90%;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.2);transition:opacity 0.3s';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.background = level === 'warn' ? 'rgba(220,38,38,0.95)' : level === 'success' ? 'rgba(16,185,129,0.95)' : 'rgba(124,45,90,0.95)';
+  toast.style.opacity = '1';
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=>{ toast.style.opacity = '0'; }, 4000);
 }
 
 // ── 메뉴우선 토글 ──
@@ -1978,8 +2075,8 @@ async function fetchNearbyMenuRestaurants(menuName){
           const kakaoLink = `https://map.kakao.com/link/map/${r.id}`;
           return `<div class="rest-card" onclick="window.open('${kakaoLink}','_blank')">
             <div style="flex:1;min-width:0">
-              <div class="rest-name">🏪 ${r.place_name}</div>
-              <div class="rest-info">${r.road_address_name||r.address_name||''}</div>
+              <div class="rest-name">🏪 ${eh(r.place_name)}</div>
+              <div class="rest-info">${eh(r.road_address_name||r.address_name||'')}</div>
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;margin-left:8px">
               <div class="rest-dist">${dist}</div>
@@ -2050,8 +2147,8 @@ async function fetchNearbyMenuRestaurants(menuName){
       const kakaoLink = `https://map.kakao.com/link/map/${r.id}`;
       return `<div class="rest-card" onclick="window.open('${kakaoLink}','_blank')">
         <div style="flex:1;min-width:0">
-          <div class="rest-name">${r.place_name}</div>
-          <div class="rest-info">${r.road_address_name||r.address_name||''}</div>
+          <div class="rest-name">${eh(r.place_name)}</div>
+          <div class="rest-info">${eh(r.road_address_name||r.address_name||'')}</div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;margin-left:8px">
           <div class="rest-dist">${dist}</div>
@@ -2149,7 +2246,7 @@ try {
   }
   
   // 🔒 관리자 모드 체크 (URL 파라미터)
-  checkAdminMode();
+  checkAdminMode().catch(()=>{});
   
   recommend();renderLog();renderRcps();
   console.log('✅ 앱 초기화 완료');

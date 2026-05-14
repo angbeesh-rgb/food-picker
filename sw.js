@@ -1,7 +1,13 @@
-const CACHE_NAME = 'mwomogji-v31';
+const CACHE_NAME = 'mwomogji-v34';
+const OFFLINE_URL = './offline.html';
 const ASSETS = [
   './index.html',
-  './manifest.json'
+  './manifest.json',
+  './offline.html',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-maskable.png',
+  './icon-apple.png'
 ];
 
 self.addEventListener('install', e => {
@@ -21,12 +27,10 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // GET 요청, http(s)만 처리. 그 외는 그냥 통과
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
 
-  // 같은 origin의 핵심 파일만 네트워크 우선
   const sameOrigin = url.origin === self.location.origin;
   const isAppFile = sameOrigin && (
     url.pathname.endsWith('/') ||
@@ -44,8 +48,19 @@ self.addEventListener('fetch', e => {
           }
           return res;
         })
-        .catch(() => caches.match(e.request))
+        .catch(async () => {
+          // 1순위: 캐시
+          const cached = await caches.match(e.request);
+          if (cached) return cached;
+          // 2순위: HTML 요청이면 오프라인 페이지
+          const isHTML = e.request.mode === 'navigate' || (e.request.headers.get('accept') || '').includes('text/html');
+          if (isHTML) {
+            const offline = await caches.match(OFFLINE_URL);
+            if (offline) return offline;
+          }
+          // 3순위: 빈 응답
+          return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+        })
     );
   }
-  // 그 외 요청(Firebase, 카카오 API 등)은 SW가 가로채지 않고 브라우저 기본 동작에 맡김
 });
