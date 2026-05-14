@@ -185,11 +185,25 @@ textarea::placeholder{color:#bbb}
 try {
   const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
   const { getDatabase, ref, runTransaction, onValue, get, set, remove } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
+  const { initializeAppCheck, ReCaptchaV3Provider } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js");
 
   const firebaseConfig = {
-    databaseURL: "https://food-picker-73e4a-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    apiKey: "AIzaSyBFWHGK3y2r4qvEzS43lkFYvCCpusTzyzc",
+    authDomain: "food-picker-73e4a.firebaseapp.com",
+    databaseURL: "https://food-picker-73e4a-default-rtdb.asia-southeast1.firebasedatabase.app/",
+    projectId: "food-picker-73e4a",
+    storageBucket: "food-picker-73e4a.firebasestorage.app",
+    messagingSenderId: "1091218643983",
+    appId: "1:1091218643983:web:9f2d418dde4dca27b9177a"
   };
   const app = initializeApp(firebaseConfig);
+
+  // App Check (reCAPTCHA v3) - 승인된 도메인에서만 Firebase 접근 허용
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider('6LdxpuosAAAAAIsWCuiux5vFwzG8NUoZrF0bZIRG'),
+    isTokenAutoRefreshEnabled: true
+  });
+
   const db = getDatabase(app);
 
   // 오늘 날짜 키 (YYYY-MM-DD) - 한국 시간(KST, UTC+9) 기준
