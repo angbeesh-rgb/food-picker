@@ -573,9 +573,12 @@ try {
   <!-- 구매완료 -->
   <div id="shop-done" style="display:none">
     <div class="card">
-      <div class="ctitle">✅ 구매완료 재료</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="ctitle" style="margin-bottom:0">✅ 구매완료 재료</div>
+        <button onclick="clearAllDone()" style="font-size:11px;padding:4px 10px;border-radius:8px;border:1.5px solid #FECACA;background:#FEF2F2;color:#991B1B;font-weight:700;cursor:pointer">🗑️ 전체 삭제</button>
+      </div>
       <div id="shopDoneContent"><div class="elog">구매완료된 재료가 없어요</div></div>
-      <button class="abtn" style="width:100%;margin-top:14px;padding:12px;font-size:15px" onclick="recommendRecipe()">🍳 이 재료로 레시피 추천받기</button>
+      <button class="abtn" style="width:100%;margin-top:14px;padding:12px;font-size:15px" onclick="recommendRecipe()">🍳 이 재료로 메뉴 추천받기</button>
       <div id="recipeResult" style="margin-top:14px"></div>
     </div>
   </div>
@@ -765,6 +768,14 @@ function restoreShopItem(id){
   delete item.completed_date;
   list.push(item);
   setShopList(list);
+  renderShop();
+}
+
+function clearAllDone(){
+  if(!getShopDone().length) return;
+  if(!confirm('구매완료 목록을 전체 삭제할까요?')) return;
+  setShopDone([]);
+  document.getElementById('recipeResult').innerHTML = '';
   renderShop();
 }
 
