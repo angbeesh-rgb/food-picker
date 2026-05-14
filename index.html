@@ -184,7 +184,7 @@ textarea::placeholder{color:#bbb}
 <script type="module">
 try {
   const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
-  const { getDatabase, ref, runTransaction, onValue, get, set } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
+  const { getDatabase, ref, runTransaction, onValue, get, set, remove } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js");
 
   const firebaseConfig = {
     databaseURL: "https://food-picker-73e4a-default-rtdb.asia-southeast1.firebasedatabase.app/"
@@ -302,6 +302,50 @@ try {
     }
   };
 
+  // 🔒 관리자 전용: 특정 날짜 데이터 삭제 (daily + stats 모두)
+  window.fbDeleteDate = async function(dateKey) {
+    try {
+      await remove(ref(db, `daily/${dateKey}`));
+      await remove(ref(db, `stats/${dateKey}`));
+      console.log('🗑️ 삭제 완료:', dateKey);
+      return true;
+    } catch(e) {
+      console.error('[fbDeleteDate] 실패:', e);
+      return false;
+    }
+  };
+
+  // 🔒 관리자 전용: 전체 데이터 삭제 (daily + stats 루트)
+  window.fbDeleteAll = async function() {
+    try {
+      await remove(ref(db, 'daily'));
+      await remove(ref(db, 'stats'));
+      console.log('🗑️ 전체 삭제 완료');
+      return true;
+    } catch(e) {
+      console.error('[fbDeleteAll] 실패:', e);
+      return false;
+    }
+  };
+
+  // 🔒 관리자 전용: 미래 날짜 데이터 삭제 (KST 변환 버그로 잘못 저장된 데이터)
+  window.fbDeleteFutureDates = async function() {
+    try {
+      const dates = await window.fbGetAllDates();
+      const today = getTodayDateKey();
+      const futureOnly = dates.filter(d => d > today);
+      for(const d of futureOnly){
+        await remove(ref(db, `daily/${d}`));
+        await remove(ref(db, `stats/${d}`));
+      }
+      console.log('🗑️ 미래 날짜 삭제 완료:', futureOnly);
+      return futureOnly;
+    } catch(e) {
+      console.error('[fbDeleteFutureDates] 실패:', e);
+      return [];
+    }
+  };
+
   // 로드 완료 신호
   window.fbReady = true;
   console.log('✅ Firebase 로드 완료 (날짜별 데이터 v2)');
@@ -314,6 +358,9 @@ try {
   window.fbGetVotesByDate = async function() { return {}; };
   window.fbGetStatsByDate = async function() { return {}; };
   window.fbGetAllDates = async function() { return []; };
+  window.fbDeleteDate = async function() { return false; };
+  window.fbDeleteAll = async function() { return false; };
+  window.fbDeleteFutureDates = async function() { return []; };
   window.fbReady = false;
 }
 </script>
@@ -376,7 +423,16 @@ try {
         <input type="date" id="adminDate" style="flex:1;padding:10px;border-radius:8px;border:1.5px solid #DC2626;background:#fff;font-size:13px"/>
         <button onclick="adminLoadDate()" style="padding:10px 16px;background:#DC2626;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">조회</button>
       </div>
-      <button onclick="adminShowAllDates()" style="width:100%;padding:8px;background:#fff;color:#DC2626;border:1.5px solid #DC2626;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px">📅 데이터 있는 모든 날짜 보기</button>
+      <button onclick="adminShowAllDates()" style="width:100%;padding:8px;background:#fff;color:#DC2626;border:1.5px solid #DC2626;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px;margin-bottom:8px">📅 데이터 있는 모든 날짜 보기</button>
+
+      <!-- 🗑️ 데이터 정리 도구 -->
+      <div style="margin-top:12px;padding:10px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px">
+        <div style="font-size:12px;font-weight:700;color:#92400E;margin-bottom:6px">🗑️ 데이터 정리</div>
+        <button onclick="adminDeleteFutureDates()" style="width:100%;padding:8px;background:#F59E0B;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px;margin-bottom:6px">⏭️ 미래 날짜 데이터 삭제 (잘못된 날짜 정리)</button>
+        <button onclick="adminDeleteOneDate()" style="width:100%;padding:8px;background:#DC2626;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px;margin-bottom:6px">🗑️ 선택한 날짜 삭제</button>
+        <button onclick="adminDeleteAll()" style="width:100%;padding:8px;background:#991B1B;color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px">⚠️ 전체 데이터 삭제 (배포 전 초기화)</button>
+      </div>
+
       <div id="adminResult" style="margin-top:12px"></div>
     </div>
   </div>
@@ -1627,6 +1683,69 @@ async function adminShowAllDates(){
     resultEl.innerHTML=html;
   }catch(e){
     resultEl.innerHTML=`<div style="color:#DC2626;padding:10px">❌ 오류: ${e.message}</div>`;
+  }
+}
+
+// 🗑️ 미래 날짜 데이터 삭제 (KST 변환 버그로 잘못 저장된 데이터 정리)
+async function adminDeleteFutureDates(){
+  if(!confirm('미래 날짜(오늘 이후)에 잘못 저장된 데이터를 모두 삭제할까요?\n복구 불가능합니다.'))return;
+  const resultEl=document.getElementById('adminResult');
+  resultEl.innerHTML='<div style="text-align:center;padding:20px;color:#888">⏳ 삭제 중...</div>';
+  try{
+    const deleted = await window.fbDeleteFutureDates();
+    if(deleted.length === 0){
+      resultEl.innerHTML='<div style="color:#10B981;padding:10px;background:#D1FAE5;border-radius:8px">✅ 정리할 미래 날짜 데이터가 없어요</div>';
+    } else {
+      resultEl.innerHTML=`<div style="color:#10B981;padding:10px;background:#D1FAE5;border-radius:8px">✅ ${deleted.length}개 날짜 삭제 완료:<br>${deleted.map(d=>`📅 ${d}`).join('<br>')}</div>`;
+    }
+    // 인기 메뉴 탭 새로고침
+    if(typeof renderPop === 'function') renderPop();
+  }catch(e){
+    resultEl.innerHTML=`<div style="color:#DC2626;padding:10px">❌ 삭제 실패: ${e.message}</div>`;
+  }
+}
+
+// 🗑️ 선택한 날짜 삭제
+async function adminDeleteOneDate(){
+  const dateInput=document.getElementById('adminDate').value;
+  if(!dateInput){alert('날짜를 선택해주세요');return;}
+  if(!confirm(`${dateInput} 날짜 데이터를 삭제할까요?\n복구 불가능합니다.`))return;
+  const resultEl=document.getElementById('adminResult');
+  resultEl.innerHTML='<div style="text-align:center;padding:20px;color:#888">⏳ 삭제 중...</div>';
+  try{
+    const ok = await window.fbDeleteDate(dateInput);
+    if(ok){
+      resultEl.innerHTML=`<div style="color:#10B981;padding:10px;background:#D1FAE5;border-radius:8px">✅ ${dateInput} 삭제 완료</div>`;
+      if(typeof renderPop === 'function') renderPop();
+    } else {
+      resultEl.innerHTML=`<div style="color:#DC2626;padding:10px">❌ 삭제 실패</div>`;
+    }
+  }catch(e){
+    resultEl.innerHTML=`<div style="color:#DC2626;padding:10px">❌ 삭제 실패: ${e.message}</div>`;
+  }
+}
+
+// 🗑️ 전체 삭제 (배포 전 초기화용)
+async function adminDeleteAll(){
+  if(!confirm('⚠️ Firebase의 모든 투표/통계 데이터를 삭제합니다.\n복구 불가능합니다. 정말 진행할까요?'))return;
+  if(!confirm('정말 확실한가요? 한 번 더 확인합니다.\n모든 사용자의 투표 기록이 사라집니다.'))return;
+  const resultEl=document.getElementById('adminResult');
+  resultEl.innerHTML='<div style="text-align:center;padding:20px;color:#888">⏳ 전체 삭제 중...</div>';
+  try{
+    const ok = await window.fbDeleteAll();
+    if(ok){
+      // 로컬 캐시도 정리
+      try{
+        localStorage.removeItem('mwomogji_likes');
+        localStorage.removeItem('mwomogji_votes_today');
+      }catch(e){}
+      resultEl.innerHTML='<div style="color:#10B981;padding:10px;background:#D1FAE5;border-radius:8px">✅ 전체 데이터 삭제 완료 (Firebase + 로컬)</div>';
+      if(typeof renderPop === 'function') renderPop();
+    } else {
+      resultEl.innerHTML=`<div style="color:#DC2626;padding:10px">❌ 삭제 실패</div>`;
+    }
+  }catch(e){
+    resultEl.innerHTML=`<div style="color:#DC2626;padding:10px">❌ 삭제 실패: ${e.message}</div>`;
   }
 }
 function switchRcp(t,el){document.querySelectorAll('#rcp .stab').forEach(b=>b.classList.remove('active'));el.classList.add('active');document.getElementById('rcp-list').style.display=t==='list'?'block':'none';document.getElementById('rcp-add').style.display=t==='add'?'block':'none';if(t==='list')renderRcps();}
