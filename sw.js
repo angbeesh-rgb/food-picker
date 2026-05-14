@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mwomogji-v29';
+const CACHE_NAME = 'mwomogji-v31';
 const ASSETS = [
   './index.html',
   './manifest.json'
