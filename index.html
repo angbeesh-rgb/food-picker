@@ -1332,6 +1332,10 @@ function getSpicyMultiplier(menu){
 
 // 스마트 추천: 망각 곡선 + 컨텍스트 가중치 + 기존 dw(비추천)
 function smartRecommend(all){
+  // 최근 5개 메뉴는 추첨 풀에서 강제 제외 (단, 가능 메뉴가 너무 적으면 풀어줌)
+  const HARD_EXCLUDE_N = 5;
+  const recentExcluded = new Set(recentRecs.slice(-HARD_EXCLUDE_N));
+
   const candidates=all
     .filter(menu=>getSpicyMultiplier(menu)>0) // ① 정반대 메뉴 사전 제거
     .map(menu=>{
@@ -1352,23 +1356,30 @@ function smartRecommend(all){
     });
   
   // 점수가 0 이상인 후보만
-  const valid=candidates.filter(c=>c.score>0);
+  let valid=candidates.filter(c=>c.score>0);
   if(!valid.length){
     // 폴백: 매운맛 필터는 유지하면서 랜덤 추천
     const spicyFiltered=all.filter(m=>getSpicyMultiplier(m)>0);
     return {menu:wRand(spicyFiltered.length?spicyFiltered:all)};
   }
-  
-  // 가중치 기반 추첨 (상위 후보일수록 뽑힐 확률 높음)
+
+  // ④ 최근 5개 메뉴 강제 제외 (단, 남은 메뉴가 3개 이상일 때만)
+  const afterExclude = valid.filter(c => !recentExcluded.has(c.menu.name));
+  if(afterExclude.length >= 3) valid = afterExclude;
+
+  // 가중치 기반 추첨
   valid.sort((a,b)=>b.score-a.score);
   // 모드별 메뉴 수에 비례해 추첨 풀 크기 결정
   const topN = mode==='normal' ? 40 : mode==='diet' ? 25 : 20;
   const top=valid.slice(0,Math.min(topN,valid.length)); // 다양성 확보
-  const tot=top.reduce((s,x)=>s+x.score,0);
+  // 점수 격차 완화: log(1+score) 적용으로 카테고리 내 단일 메뉴 독점 방지
+  // (점수 90 vs 10일 때 원본은 9배 차이 → log 적용 후 약 1.9배 차이)
+  const weights = top.map(c => Math.log(1 + c.score));
+  const tot = weights.reduce((s,w)=>s+w, 0);
   let r=Math.random()*tot;
-  for(const c of top){
-    r-=c.score;
-    if(r<=0) return {menu:c.menu,score:c.score};
+  for(let i=0; i<top.length; i++){
+    r -= weights[i];
+    if(r<=0) return {menu:top[i].menu,score:top[i].score};
   }
   return {menu:top[0].menu,score:top[0].score};
 }
