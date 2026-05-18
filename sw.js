@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mwomogji-v42';
+const CACHE_NAME = 'mwomogji-v43';
 const OFFLINE_URL = './offline.html';
 const ASSETS = [
   './index.html',
