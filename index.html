@@ -29,6 +29,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sec{display:none}.sec.active{display:block}
 /* 카드 */
 .card{background:#fff;border:1px solid #FCE7F3;border-radius:16px;padding:14px;margin-bottom:12px;box-shadow:0 2px 8px rgba(249,168,212,0.1)}
+.adslot{width:100%;max-width:320px;height:100px;margin:0 auto 12px;border:1px dashed #E5C9D8;border-radius:12px;background:#FFF5FA;display:flex;align-items:center;justify-content:center;color:#B57A99;font-size:12px;font-weight:600;letter-spacing:0.5px;text-align:center;overflow:hidden;position:relative}
+.adslot::before{content:'AD';position:absolute;top:4px;left:8px;font-size:9px;font-weight:700;color:#D89BB5;letter-spacing:1px;opacity:0.7}
+.adslot-inner{padding:0 12px;line-height:1.4}
+@media (max-width:340px){.adslot{height:50px}}
 .ctitle{font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:10px;display:flex;align-items:center;gap:6px}
 /* 추천 카드 */
 .rcard{background:linear-gradient(135deg,#FDF2F8,#FFF7ED);border:2px solid #FBCFE8;border-radius:16px;padding:16px;margin-bottom:10px;position:relative;overflow:hidden}
@@ -386,6 +390,10 @@ try {
 <!-- 추천 -->
 <div id="rec" class="sec active">
   <div id="poolNotice" style="display:none"></div>
+  <!-- AD_SLOT: 광고 자리 (320x100 Large Mobile Banner) - 실제 광고 코드로 교체 -->
+  <div class="adslot" id="adSlotTop" aria-label="광고 영역">
+    <div class="adslot-inner">광고 영역<br><span style="font-size:10px;opacity:0.7">320 × 100</span></div>
+  </div>
   <div class="card">
     <div class="ctitle">✨ 오늘의 추천</div>
     <div class="rcard">
@@ -417,7 +425,10 @@ try {
 
 <!-- 뭐먹어? -->
 <div id="pop" class="sec">
-  <div class="nbox">👍 추천 버튼을 누른 메뉴만 집계돼요. 오늘 00:00 기준으로 매일 새로 시작해요. 개인정보는 수집되지 않아요.</div>
+  <!-- AD_SLOT: 광고 자리 (320x100 Large Mobile Banner) - 실제 광고 코드로 교체 -->
+  <div class="adslot" id="adSlotPop" aria-label="광고 영역">
+    <div class="adslot-inner">광고 영역<br><span style="font-size:10px;opacity:0.7">320 × 100</span></div>
+  </div>
   <div class="card">
     <div class="ctitle">🔥 오늘의 인기 메뉴 TOP 10</div>
     <div style="font-size:11px;color:#888;margin-bottom:10px" id="popTime"></div>
