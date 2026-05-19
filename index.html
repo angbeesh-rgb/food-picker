@@ -213,7 +213,7 @@ try {
   // 오늘 날짜 키 (YYYY-MM-DD) - 한국 시간(KST, UTC+9) 기준
   function getTodayDateKey() {
     const now = new Date();
-    const kst = new Date(now.getTime() + (9*60 + now.getTimezoneOffset()) * 60000);
+    const kst = new Date(now.getTime() + 9*60*60000);
     return kst.toISOString().slice(0, 10);
   }
 
@@ -241,7 +241,7 @@ try {
         const newVoteRef = ref(db, `stats/${today}/votes/${timestamp}`);
         // KST 기준 시간/요일로 통계 통일
         const now = new Date();
-        const kst = new Date(now.getTime() + (9*60 + now.getTimezoneOffset()) * 60000);
+        const kst = new Date(now.getTime() + 9*60*60000);
         await set(newVoteRef, {
           menu: menuName,
           weather: weatherData.weather || 'unknown',
@@ -695,7 +695,7 @@ let mode='normal',meals=[],rcps=[],ings=[],steps=[],curMenu='',dw={},recentRecs=
 function todayKey(){
   // 한국 시간(KST, UTC+9) 기준 YYYY-MM-DD
   const now = new Date();
-  const kst = new Date(now.getTime() + (9*60 + now.getTimezoneOffset()) * 60000);
+  const kst = new Date(now.getTime() + 9*60*60000);
   return kst.toISOString().slice(0,10);
 }
 function resetVotesIfNewDay(){
@@ -1181,7 +1181,7 @@ let envData={weather:null,temp:null,hour:null,dayOfWeek:null};
 function updateEnvData(){
   const now=new Date();
   // KST(UTC+9) 기준 시간/요일로 통일: 해외 사용자도 한국 식문화 기준으로 추천
-  const kst = new Date(now.getTime() + (9*60 + now.getTimezoneOffset()) * 60000);
+  const kst = new Date(now.getTime() + 9*60*60000);
   envData.hour = kst.getUTCHours();
   envData.dayOfWeek = kst.getUTCDay(); // 0=일, 1=월, ...
 }
@@ -1561,7 +1561,7 @@ function clearDislikes(){dw={};saveLS();renderDL();}
 function renderPop(){
   const now=new Date();
   // KST 기준 날짜 표시
-  const kst=new Date(now.getTime()+(9*60+now.getTimezoneOffset())*60000);
+  const kst=new Date(now.getTime()+9*60*60000);
   document.getElementById('popTime').textContent=kst.toLocaleDateString('ko-KR',{month:'long',day:'numeric'})+' '+kst.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})+' 기준';
   
   // 자정 넘김 감지: getLV() 호출로 날짜 리셋 강제 적용
