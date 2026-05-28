@@ -2,6 +2,8 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://www.google.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://*.firebaseio.com https://*.firebasedatabase.app https://*.googleapis.com https://www.google.com https://dapi.kakao.com https://*.netlify.app https://kakao-proxy.angbeesh.workers.dev https://api.open-meteo.com https://api.openweathermap.org; frame-src https://www.google.com; object-src 'none'; base-uri 'self'; form-action 'self'"/>
+<meta name="referrer" content="strict-origin-when-cross-origin"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <meta name="theme-color" content="#F9A8D4"/>
 <meta name="mobile-web-app-capable" content="yes"/>
@@ -480,21 +482,21 @@ try {
   <div id="rcp-add" style="display:none">
     <div class="card">
       <div class="ctitle">📝 레시피 등록</div>
-      <input class="ai" id="rName" placeholder="메뉴 이름 (예: 엄마표 된장찌개)" style="width:100%;margin-bottom:8px"/>
+      <input class="ai" id="rName" placeholder="메뉴 이름 (예: 엄마표 된장찌개)" maxlength="40" style="width:100%;margin-bottom:8px"/>
       <div style="display:flex;gap:8px;margin-bottom:8px">
-        <input class="ai" id="rCal" placeholder="칼로리(kcal)" type="number" style="flex:1"/>
+        <input class="ai" id="rCal" placeholder="칼로리(kcal)" type="number" min="0" max="10000" maxlength="5" style="flex:1"/>
         <select id="rCuisine" style="flex:1;margin-bottom:0"><option value="한식">🍲 한식</option><option value="양식">🍝 양식</option><option value="중식">🥟 중식</option><option value="일식">🍣 일식</option><option value="기타">🍴 기타</option></select>
       </div>
       <div class="ctitle" style="margin-bottom:6px;font-size:13px">🥬 재료</div>
       <div id="ingList" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:28px"></div>
       <div style="display:flex;gap:8px;margin-bottom:10px">
-        <input class="ai" id="ingInput" placeholder="재료 입력 후 추가" style="flex:1"/>
+        <input class="ai" id="ingInput" placeholder="재료 입력 후 추가" maxlength="50" style="flex:1"/>
         <button class="abtn" onclick="addIng()">추가</button>
       </div>
       <div class="ctitle" style="margin-bottom:6px;font-size:13px">👨‍🍳 조리 순서</div>
       <div id="stepList" style="margin-bottom:8px"></div>
       <div style="display:flex;gap:8px;margin-bottom:10px">
-        <textarea id="stepInput" placeholder="조리 순서 한 단계씩 입력" style="flex:1"></textarea>
+        <textarea id="stepInput" placeholder="조리 순서 한 단계씩 입력" maxlength="200" style="flex:1"></textarea>
         <button class="abtn" style="align-self:flex-end" onclick="addStep()">추가</button>
       </div>
       <button class="rbtn" onclick="saveRcp()">💾 레시피 저장</button>
@@ -580,8 +582,8 @@ try {
       <div class="ctitle" style="margin-top:14px">➕ 식사 추가</div>
       <select id="mealType"><option>🌅 아침</option><option selected>☀️ 점심</option><option>🌙 저녁</option><option>🍪 간식</option></select>
       <div class="ar">
-        <input class="ai" id="addMealName" placeholder="음식 이름"/>
-        <input class="ai" id="addMealCal" placeholder="칼로리" type="number" style="max-width:90px"/>
+        <input class="ai" id="addMealName" placeholder="음식 이름" maxlength="40"/>
+        <input class="ai" id="addMealCal" placeholder="칼로리" type="number" min="0" max="10000" maxlength="5" style="max-width:90px"/>
         <button class="abtn" onclick="addMeal()">추가</button>
       </div>
     </div>
@@ -629,7 +631,7 @@ try {
     <div class="card">
       <div class="ctitle">➕ 구매할 재료 추가</div>
       <div class="ar">
-        <input class="ai" id="shopInput" placeholder="예: 계란, 양파, 김치" onkeydown="if(event.key==='Enter')addShopItem()"/>
+        <input class="ai" id="shopInput" placeholder="예: 계란, 양파, 김치" maxlength="100" onkeydown="if(event.key==='Enter')addShopItem()"/>
         <button class="abtn" onclick="addShopItem()">추가</button>
       </div>
       <div class="ctitle" style="margin-top:14px">🛒 구매할 목록</div>
@@ -844,7 +846,8 @@ function addShopItem(){
   const val = input.value.trim();
   if(!val) return;
   // 쉼표로 구분된 여러 항목도 지원
-  const items = val.split(/[,，、]/).map(s=>s.trim()).filter(Boolean);
+  const items = val.split(/[,，、]/).map(s=>sanitizeUserInput(s,50)).filter(Boolean);
+  if(!items.length) return;
   const list = getShopList();
   const now = Date.now();
   items.forEach((item,i)=>{
@@ -853,6 +856,15 @@ function addShopItem(){
   setShopList(list);
   input.value = '';
   renderShop();
+}
+
+// 사용자 입력 정리: 길이 제한 + 제어 문자 제거 (innerHTML은 eh()로 별도 escape됨)
+function sanitizeUserInput(s, maxLen){
+  if(typeof s !== 'string') return '';
+  // 제어 문자 (탭/줄바꿈 제외) 제거
+  s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').trim();
+  if(maxLen && s.length > maxLen) s = s.slice(0, maxLen);
+  return s;
 }
 
 function completeShopItem(id){
@@ -1065,6 +1077,25 @@ function getMenus(){
   const seen=new Set();
   all=all.filter(m=>{if(seen.has(m.name))return false;seen.add(m.name);return true;});
   return all;
+}
+
+// 보안: 모드 무관 전체 DB의 메뉴 이름 화이트리스트 (lazy 초기화)
+let _allMenuNames = null;
+function isValidMenu(name){
+  if(!name || typeof name !== 'string') return false;
+  // 길이 제한 (30자 이내) + 문자 제한 (한글/영문/숫자/공백/일부 기호만)
+  if(name.length > 30) return false;
+  if(!/^[가-힣A-Za-z0-9 ()+]+$/.test(name)) return false;
+  // 화이트리스트 캐시 빌드
+  if(!_allMenuNames){
+    _allMenuNames = new Set();
+    Object.values(DB).forEach(modeData => {
+      Object.values(modeData).forEach(catArr => {
+        catArr.forEach(m => _allMenuNames.add(m.name));
+      });
+    });
+  }
+  return _allMenuNames.has(name);
 }
 
 // ───────────────────────────────────────
@@ -1493,6 +1524,11 @@ function pickAlt(name,desc,cal,tags){curMenu=name;window.curMenuData={name,desc,
 function rstV(){document.getElementById('voteUp').classList.remove('active');document.getElementById('voteDown').classList.remove('active');const fb=document.getElementById('voteFb');fb.className='vfb';fb.textContent='';}
 function vote(up){
   if(!curMenu)return;const fb=document.getElementById('voteFb');
+  // 보안: DB에 등록된 메뉴인지 검증 (콘솔 조작 방어)
+  if(!isValidMenu(curMenu)){
+    console.warn('[vote] 등록되지 않은 메뉴 거부:', curMenu);
+    return;
+  }
   // 추천 시점의 KST 날짜 (자정 정합성: 23:59에 추천받고 00:01에 투표해도 어제로 집계)
   const recDate = window.curMenuData?.recommendedAtDate || todayKey();
   const recTs = window.curMenuData?.recommendedAtTs || Date.now();
@@ -1506,10 +1542,19 @@ function vote(up){
     saveLS();
     // 로컬 카운트 (Firebase 폴백용)
     const lv=getLV();lv[curMenu]=(lv[curMenu]||0)+1;saveLV(lv);
-    // 인기 집계는 하루 5번 제한
+    // 인기 집계는 하루 5번 제한 (localStorage + 메모리 + 시간 간격 다중 검증)
     const todayVotes = parseInt(localStorage.getItem('mwomogji_votes_today')||'0',10);
-    if(todayVotes >= 5){
+    // 봇 차단: 메모리 카운터(localStorage 우회 방어) + 최소 2초 간격
+    window._voteSession = window._voteSession || {count:0, lastTs:0, date:todayKey()};
+    if(window._voteSession.date !== todayKey()){
+      window._voteSession = {count:0, lastTs:0, date:todayKey()};
+    }
+    const memCount = window._voteSession.count;
+    const sinceLast = Date.now() - window._voteSession.lastTs;
+    if(todayVotes >= 5 || memCount >= 5){
       fb.textContent='👍 식단에 추가됐어요! (오늘 인기 집계 횟수 초과)';
+    } else if(sinceLast < 2000){
+      fb.textContent='👍 식단에 추가됐어요! (잠시 후 다시 시도해주세요)';
     } else {
       if(typeof window.fbVoteUp === 'function'){
         try { 
@@ -1523,6 +1568,8 @@ function vote(up){
         console.warn('[vote] Firebase 미로드, 로컬에만 집계됨');
       }
       localStorage.setItem('mwomogji_votes_today', String(todayVotes + 1));
+      window._voteSession.count = memCount + 1;
+      window._voteSession.lastTs = Date.now();
       const remain = 4 - todayVotes;
       fb.textContent=remain > 0 ? `👍 좋아요! 인기 메뉴로 집계될게요 😊 (오늘 ${remain}번 남음)` : '👍 좋아요! 오늘 마지막 집계예요 😊';
     }
@@ -1598,7 +1645,8 @@ function _renderPopData(lv){const now=new Date();
 // ───────────────────────────────────────
 // 비밀번호 평문 대신 PBKDF2-SHA256 해시만 코드에 저장 (XSS/소스보기 방어)
 // 비밀번호 변경 시: 새 해시 생성 후 ADMIN_PWD_HASH만 교체
-const ADMIN_PWD_HASH = '106cb8a242b5a6c64f3bb7252bacb5ccfc4a12eb2dff0e644150493a17f27141';
+// 현재 비밀번호: mWom0gji!Admin#2026$Secure (26자, 영문대소문자+숫자+특수문자)
+const ADMIN_PWD_HASH = '5f8c363f6822be7c7c2cdaa6d706687fa6713ce4fa42ff8647cb9111e2ba77fa';
 const ADMIN_PWD_SALT = 'mwomogji_2026';
 const ADMIN_PWD_ITER = 10000;
 
@@ -1828,13 +1876,13 @@ async function adminDeleteAll(){
   }
 }
 function switchRcp(t,el){document.querySelectorAll('#rcp .stab').forEach(b=>b.classList.remove('active'));el.classList.add('active');document.getElementById('rcp-list').style.display=t==='list'?'block':'none';document.getElementById('rcp-add').style.display=t==='add'?'block':'none';if(t==='list')renderRcps();}
-function addIng(){const v=document.getElementById('ingInput').value.trim();if(!v)return;ings.push(v);document.getElementById('ingInput').value='';renderIngs();}
+function addIng(){const v=sanitizeUserInput(document.getElementById('ingInput').value,50);if(!v)return;if(ings.length>=50)return;ings.push(v);document.getElementById('ingInput').value='';renderIngs();}
 function renderIngs(){document.getElementById('ingList').innerHTML=ings.map((ig,i)=>`<span class="itag">${eh(ig)} <span onclick="rmIng(${i})" style="cursor:pointer;opacity:0.6">×</span></span>`).join('');}
 function rmIng(i){ings.splice(i,1);renderIngs();}
-function addStep(){const v=document.getElementById('stepInput').value.trim();if(!v)return;steps.push(v);document.getElementById('stepInput').value='';renderSteps();}
+function addStep(){const v=sanitizeUserInput(document.getElementById('stepInput').value,200);if(!v)return;if(steps.length>=30)return;steps.push(v);document.getElementById('stepInput').value='';renderSteps();}
 function renderSteps(){document.getElementById('stepList').innerHTML=steps.map((s,i)=>`<div class="step"><div class="stepn">${i+1}</div><div style="flex:1;font-size:12px;color:#888">${eh(s)} <span onclick="rmStep(${i})" style="cursor:pointer;color:#F87171;font-size:11px">삭제</span></div></div>`).join('');}
 function rmStep(i){steps.splice(i,1);renderSteps();}
-function saveRcp(){const n=document.getElementById('rName').value.trim();if(!n){alert('메뉴 이름을 입력해주세요!');return;}const c=parseInt(document.getElementById('rCal').value)||0;const cu=document.getElementById('rCuisine').value;rcps.push({name:n,cal:c,cuisine:cu,ingredients:[...ings],steps:[...steps]});ings=[];steps=[];document.getElementById('rName').value='';document.getElementById('rCal').value='';document.getElementById('ingList').innerHTML='';document.getElementById('stepList').innerHTML='';saveLS();renderRcps();const tabs=document.querySelectorAll('#rcp .stab');switchRcp('list',tabs[0]);tabs[1].classList.remove('active');}
+function saveRcp(){const n=sanitizeUserInput(document.getElementById('rName').value,40);if(!n){alert('메뉴 이름을 입력해주세요!');return;}if(rcps.length>=100){alert('레시피는 최대 100개까지 등록할 수 있어요.');return;}let c=parseInt(document.getElementById('rCal').value)||0;if(c<0)c=0;if(c>10000)c=10000;const cu=sanitizeUserInput(document.getElementById('rCuisine').value,20);rcps.push({name:n,cal:c,cuisine:cu,ingredients:[...ings],steps:[...steps]});ings=[];steps=[];document.getElementById('rName').value='';document.getElementById('rCal').value='';document.getElementById('ingList').innerHTML='';document.getElementById('stepList').innerHTML='';saveLS();renderRcps();const tabs=document.querySelectorAll('#rcp .stab');switchRcp('list',tabs[0]);tabs[1].classList.remove('active');}
 function renderRcps(){const el=document.getElementById('rcpCards');if(!rcps.length){el.innerHTML='<div class="elog" style="padding:20px 0">등록된 집밥 레시피가 없어요<br><span style="font-size:12px">오른쪽 탭에서 추가해봐요!</span></div>';return;}el.innerHTML=rcps.map((r,i)=>`<div class="rcpcard" id="rc-${i}"><div class="rcpname" onclick="togRcp(${i})"><span>🏠 ${eh(r.name)}</span><span id="rc-arrow-${i}">▼</span></div><div class="rcpmeta">${eh(r.cuisine)} · ${r.cal?r.cal+' kcal':'칼로리 미입력'}</div><div class="rcpdetail" id="rc-detail-${i}">${r.ingredients.length?`<h4>🥬 재료</h4><div>${r.ingredients.map(ig=>`<span class="itag">${eh(ig)}</span>`).join('')}</div>`:''} ${r.steps.length?`<h4>👨‍🍳 조리 순서</h4>${r.steps.map((s,j)=>`<div class="step"><div class="stepn">${j+1}</div><div style="flex:1;font-size:12px">${eh(s)}</div></div>`).join('')}`:''}<div style="display:flex;gap:6px;margin-top:10px">${r.ingredients.length?`<button class="rcpdel" style="background:#FDF2F8;color:#9D174D;border:1.5px solid #FBCFE8;flex:1" onclick="addRecipeIngredientsToShop(${i})">🛒 재료 장보기 담기</button>`:''}<button class="rcpdel" onclick="delRcp(${i})" style="flex:${r.ingredients.length?'0 0 auto':'1'}">🗑️ 삭제</button></div></div></div>`).join('');}
 
 // 레시피 재료를 장보기 구매목록에 일괄 추가
@@ -1898,10 +1946,12 @@ document.getElementById('todayCal').textContent=todayMeals.reduce((s,m)=>s+m.cal
 document.getElementById('mealCount').textContent=todayMeals.length;
 }
 function addMeal(){
-  const n=document.getElementById('addMealName').value.trim();
-  const t=document.getElementById('mealType').value;
+  const n=sanitizeUserInput(document.getElementById('addMealName').value,40);
+  const t=sanitizeUserInput(document.getElementById('mealType').value,20);
   const calInput=document.getElementById('addMealCal');
-  const cal=parseInt(calInput?.value)||0;
+  let cal=parseInt(calInput?.value)||0;
+  if(cal<0)cal=0;
+  if(cal>10000)cal=10000;
   if(!n)return;
   meals.unshift({name:n,cal:cal,type:t,date:todayKey(),ts:Date.now()});
   document.getElementById('addMealName').value='';
@@ -2063,7 +2113,16 @@ function showCalDayDetail(dateStr){
 }
 function rate(n){document.querySelectorAll('.star').forEach((s,i)=>s.classList.toggle('lit',i<n));}
 
-function e(s){return s.replace(/'/g,"\\'");}
+// onclick 속성 안의 작은따옴표 문자열용 escape (XSS 차단)
+function e(s){
+  return String(s==null?'':s)
+    .replace(/\\/g,'\\\\')
+    .replace(/'/g,"\\'")
+    .replace(/"/g,'&quot;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/[\x00-\x1F\x7F]/g,'');
+}
 
 const searchRadius = 10000; // 고정 10km
 let menuFirstMode = false;

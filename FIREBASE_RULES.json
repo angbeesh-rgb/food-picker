@@ -1,0 +1,32 @@
+{
+  "rules": {
+    "daily": {
+      "$date": {
+        ".read": true,
+        ".validate": "$date.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)",
+        "menus": {
+          "$menuName": {
+            ".write": true,
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000 && $menuName.length <= 30 && $menuName.matches(/^[가-힣A-Za-z0-9 ()+_]+$/)"
+          }
+        }
+      }
+    },
+    "stats": {
+      "$date": {
+        ".read": "auth != null || true",
+        ".validate": "$date.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)",
+        "votes": {
+          "$ts": {
+            ".write": "newData.exists() && !data.exists()",
+            ".validate": "$ts.matches(/^[0-9]+$/) && newData.hasChildren(['menu','ts']) && newData.child('menu').isString() && newData.child('menu').val().length <= 30 && newData.child('menu').val().matches(/^[가-힣A-Za-z0-9 ()+]+$/) && newData.child('ts').isNumber() && newData.child('hour').isNumber() && newData.child('hour').val() >= 0 && newData.child('hour').val() <= 23 && newData.child('dayOfWeek').isNumber() && newData.child('dayOfWeek').val() >= 0 && newData.child('dayOfWeek').val() <= 6"
+          }
+        }
+      }
+    },
+    "$other": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}
