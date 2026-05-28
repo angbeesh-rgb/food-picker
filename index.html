@@ -17,7 +17,7 @@
 <link rel="manifest" href="manifest.json"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#FFF9FB;color:#1a1a1a;max-width:430px;margin:0 auto;min-height:100vh}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#FFF9FB;color:#1a1a1a;max-width:430px;margin:0 auto;min-height:100vh;overscroll-behavior-y:none;-webkit-overflow-scrolling:touch}
 .app{padding:12px;padding-bottom:80px}
 .hdr{text-align:center;padding:20px 0 10px}
 .hdr h1{font-size:22px;font-weight:700;color:#1a1a1a}
@@ -99,6 +99,37 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* 버튼 */
 .rbtn{width:100%;padding:15px;border-radius:16px;background:linear-gradient(135deg,#F9A8D4,#F87171);border:none;color:white;font-size:15px;font-weight:800;cursor:pointer;transition:opacity 0.2s;margin-top:4px;min-height:50px}
 .rbtn:active{opacity:0.85}
+
+/* Pull-to-Refresh 인디케이터 */
+.ptr-zone{position:relative;overflow:visible}
+.ptr-indicator{display:flex;align-items:center;justify-content:center;height:0;overflow:hidden;transition:height 0.3s ease;font-size:13px;font-weight:700;color:#BE185D;gap:6px}
+.ptr-indicator.pulling{transition:none}
+.ptr-indicator .ptr-icon{font-size:24px;transition:transform 0.2s}
+.ptr-indicator.ready .ptr-icon{transform:rotate(180deg)}
+.ptr-indicator.refreshing .ptr-icon{animation:ptr-spin 0.6s linear infinite}
+@keyframes ptr-spin{to{transform:rotate(360deg)}}
+
+/* 슬롯머신 애니메이션 */
+.slot-wrap{position:relative;overflow:hidden;height:26px}
+.slot-reel{position:relative;transition:none}
+.slot-reel.spinning .slot-item{animation:slot-blur 0.08s linear infinite alternate}
+.slot-reel.settling .slot-item{animation:slot-settle 0.3s ease-out forwards}
+@keyframes slot-blur{0%{opacity:1;transform:translateY(0)}100%{opacity:0.5;transform:translateY(-4px)}}
+@keyframes slot-settle{0%{transform:translateY(-8px);opacity:0.4}50%{transform:translateY(2px);opacity:0.9}100%{transform:translateY(0);opacity:1}}
+.slot-item{white-space:nowrap}
+
+/* 대안 카드 슬롯 */
+.ac.slot-spinning .an{animation:slot-blur 0.08s linear infinite alternate}
+.ac.slot-settled .an{animation:slot-settle 0.3s ease-out forwards}
+.ac.slot-spinning .aca{opacity:0.3}
+.ac.slot-settled .aca{animation:fade-in 0.3s ease-out forwards}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+
+/* 당기기 안내 배너 */
+.pull-banner{width:100%;padding:14px;border-radius:16px;background:linear-gradient(135deg,#F9A8D4,#F87171);border:none;color:white;font-size:14px;font-weight:800;cursor:pointer;margin-top:4px;min-height:50px;display:flex;align-items:center;justify-content:center;gap:8px;user-select:none;-webkit-user-select:none;transition:transform 0.2s,opacity 0.2s}
+.pull-banner:active{opacity:0.85;transform:scale(0.98)}
+.pull-banner .pull-arrow{font-size:18px;animation:bounce-down 1.2s ease-in-out infinite}
+@keyframes bounce-down{0%,100%{transform:translateY(0)}50%{transform:translateY(5px)}}
 .dbc{font-size:11px;color:#aaa;text-align:right;margin-bottom:6px}
 /* 모드 버튼 */
 .mrow{display:flex;gap:8px}
@@ -390,7 +421,12 @@ try {
 <div class="hdr"><h1>🍱 오늘 뭐먹지?</h1><p>맛있는 하루를 계획해봐요</p></div>
 
 <!-- 추천 -->
-<div id="rec" class="sec active">
+<div id="rec" class="sec active ptr-zone">
+  <!-- Pull-to-Refresh 인디케이터 -->
+  <div class="ptr-indicator" id="ptrIndicator">
+    <span class="ptr-icon">⬇️</span>
+    <span class="ptr-text">당겨서 추천받기</span>
+  </div>
   <div id="poolNotice" style="display:none"></div>
   <!-- AD_SLOT: 광고 자리 (320x100 Large Mobile Banner) - 실제 광고 코드로 교체 -->
   <div class="adslot" id="adSlotTop" aria-label="광고 영역">
@@ -400,7 +436,9 @@ try {
     <div class="ctitle">✨ 오늘의 추천</div>
     <div class="rcard">
       <div class="rhdr">
-        <div class="rmain" id="recName">추천 버튼을 눌러봐요!</div>
+        <div class="rmain" id="recName">
+          <div class="slot-wrap"><div class="slot-item" id="slotMain">아래로 당겨보세요!</div></div>
+        </div>
         <div class="vrow">
           <button class="vbtn up" id="voteUp" onclick="vote(true)">👍</button>
           <button class="vbtn dn" id="voteDown" onclick="vote(false)">👎</button>
@@ -421,7 +459,9 @@ try {
     <div style="font-size:13px;font-weight:700;color:#888;margin-bottom:8px">다른 선택지</div>
     <div class="arow" id="altRow"></div>
     <div class="dbc" id="dbCount"></div>
-    <button class="rbtn" onclick="recommend()">🎲 추천받기</button>
+    <div class="pull-banner" onclick="recommend()">
+      <span class="pull-arrow">⬇️</span> 당겨서 추천받기
+    </div>
   </div>
 </div>
 
@@ -1436,11 +1476,14 @@ function wRand(all){
   const tot=w.reduce((s,x)=>s+x.wt,0);let r=Math.random()*tot;
   for(const x of w){r-=x.wt;if(r<=0)return x.m;}return w[w.length-1].m;
 }
+// 슬롯머신 상태
+let _slotBusy = false;
+
 function recommend(){
+  if(_slotBusy) return;
   const all=getMenus();if(!all.length)return;
 
   // 매운맛/모드/카테고리 조합으로 인해 풀이 너무 좁으면 사용자에게 안내
-  // spicy > 0 인 메뉴(=실제로 추천 가능한 메뉴) 개수 체크
   const validForSpicy = all.filter(m => getSpicyMultiplier(m) > 0);
   const poolNoticeEl = document.getElementById('poolNotice');
   if(poolNoticeEl){
@@ -1454,22 +1497,20 @@ function recommend(){
     }
   }
   
-  // 🧠 스마트 추천 (망각 곡선 + 컨텍스트 가중치)
+  // 🧠 스마트 추천 (결과 미리 계산)
   const result=smartRecommend(all);
   const p=result.menu;
-  setMenu(p);
 
-  // 최근 추천 이력 업데이트 (최대 20개 유지)
+  // 최근 추천 이력 업데이트
   recentRecs=recentRecs.filter(n=>n!==p.name);
   recentRecs.push(p.name);
   if(recentRecs.length>20)recentRecs.shift();
   saveLS();
 
-  // 대안 메뉴: 메인 추천과 중복되지 않도록 이름 제외 + 최근 5개도 제외
+  // 대안 메뉴 계산
   const HARD_EXCLUDE_N = 5;
   const recentExcluded = new Set(recentRecs.slice(-HARD_EXCLUDE_N));
   const usedNames=new Set([p.name]);
-
   let altCandidates=all
     .filter(m=>!usedNames.has(m.name)&&getSpicyMultiplier(m)>0)
     .map(m=>{
@@ -1479,19 +1520,13 @@ function recommend(){
       return {m,score};
     })
     .filter(c=>c.score>0);
-
-  // 최근 5개도 강제 제외 (단, 남은 메뉴가 6개 미만이면 풀어줌 - 4개는 필요하므로 여유분)
   const afterExclude = altCandidates.filter(c => !recentExcluded.has(c.m.name));
   if(afterExclude.length >= 6) altCandidates = afterExclude;
-
   altCandidates.sort((a,b)=>b.score-a.score);
-
-  // 상위 12개를 log 가중 추첨으로 4개 선택 (메인과 동일 알고리즘)
   const pool=altCandidates.slice(0,12);
   const rest=[];
   const used=new Set();
   while(rest.length < 4 && pool.length > used.size){
-    // log 가중 추첨
     const available = pool.filter((_,i) => !used.has(i));
     if(!available.length) break;
     const weights = available.map(c => Math.log(1 + c.score));
@@ -1502,25 +1537,158 @@ function recommend(){
       r -= weights[i];
       if(r<=0){ chosenIdx = i; break; }
     }
-    // pool에서 실제 인덱스 찾기
     const realIdx = pool.indexOf(available[chosenIdx]);
     used.add(realIdx);
     rest.push(pool[realIdx].m);
   }
-
-  // 그래도 4개 미만이면 나머지 메뉴로 채움 (폴백)
   if(rest.length<4){
     const fallback=all.filter(m=>!usedNames.has(m.name)&&!rest.find(r=>r.name===m.name));
     rest.push(...fallback.sort(()=>Math.random()-0.5).slice(0,4-rest.length));
   }
 
-  document.getElementById('altRow').innerHTML=rest.map(a=>`<div class="ac" onclick="pickAlt('${e(a.name)}','${e(a.desc)}',${a.cal},'${a.tags.join(",")}')"><div class="an">${eh(a.name)}</div><div class="aca">${a.cal} kcal</div></div>`).join('');
-  document.getElementById('dbCount').textContent='현재 모드 메뉴 '+all.length+'개';rstV();
+  // 🎰 슬롯머신 애니메이션 시작
+  _slotBusy = true;
+  runSlotAnimation(all, p, rest, function(){
+    _slotBusy = false;
+    document.getElementById('dbCount').textContent='현재 모드 메뉴 '+all.length+'개';
+    rstV();
+  });
 }
 
+// 🎰 슬롯머신 애니메이션 엔진
+function runSlotAnimation(allMenus, mainResult, altResults, onDone){
+  const slotEl = document.getElementById('slotMain');
+  const descEl = document.getElementById('recDesc');
+  const calEl = document.getElementById('recCal');
+  const tagsEl = document.getElementById('recTags');
+  const altRowEl = document.getElementById('altRow');
 
-function setMenu(m){curMenu=m.name;window.curMenuData={...m,recommendedAtDate:todayKey(),recommendedAtTs:Date.now()};document.getElementById('recName').textContent=m.name;document.getElementById('recDesc').textContent=m.desc;document.getElementById('recCal').textContent='약 '+m.cal+' kcal';document.getElementById('recTags').innerHTML=m.tags.map(t=>`<span class="rtag">${eh(t)}</span>`).join('');if(menuFirstMode)fetchNearbyMenuRestaurants(m.name);else document.getElementById('menuFirstWrap').style.display='none';}
-function pickAlt(name,desc,cal,tags){curMenu=name;window.curMenuData={name,desc,cal,tags:tags.split(','),recommendedAtDate:todayKey(),recommendedAtTs:Date.now()};document.getElementById('recName').textContent=name;document.getElementById('recDesc').textContent=desc;document.getElementById('recCal').textContent='약 '+cal+' kcal';document.getElementById('recTags').innerHTML=tags.split(',').map(t=>`<span class="rtag">${eh(t)}</span>`).join('');rstV();if(menuFirstMode)fetchNearbyMenuRestaurants(name);else document.getElementById('menuFirstWrap').style.display='none';}
+  // 애니메이션 중 정보 숨김
+  descEl.textContent = '';
+  calEl.textContent = '';
+  tagsEl.innerHTML = '';
+
+  // 랜덤 메뉴 이름 풀 (셔플)
+  const namePool = allMenus.map(m=>m.name).sort(()=>Math.random()-0.5);
+
+  // 대안 카드 미리 생성 (슬롯 상태)
+  altRowEl.innerHTML = altResults.map(()=>`<div class="ac slot-spinning"><div class="an">...</div><div class="aca">&nbsp;</div></div>`).join('');
+
+  // === 메인 슬롯 애니메이션 ===
+  let frame = 0;
+  const totalFrames = 18;
+  let mainInterval = null;
+
+  function spinMain(){
+    if(frame < totalFrames){
+      // 점점 느려지는 속도: 40ms → 120ms
+      const delay = 40 + Math.pow(frame / totalFrames, 2) * 100;
+      slotEl.textContent = namePool[frame % namePool.length];
+      slotEl.parentElement.classList.add('slot-spinning');
+      frame++;
+      mainInterval = setTimeout(spinMain, delay);
+    } else {
+      // 메인 확정
+      slotEl.parentElement.classList.remove('slot-spinning');
+      slotEl.classList.add('slot-settling');
+      setTimeout(()=>slotEl.classList.remove('slot-settling'), 300);
+      setMenu(mainResult);
+      // 대안 순차 확정
+      settleAlts(altResults, 0, onDone);
+    }
+  }
+  spinMain();
+}
+
+// 대안 카드 순차 확정 (0.15초 간격)
+function settleAlts(altResults, idx, onDone){
+  const altRowEl = document.getElementById('altRow');
+  const cards = altRowEl.querySelectorAll('.ac');
+  if(idx >= altResults.length || idx >= cards.length){
+    if(onDone) onDone();
+    return;
+  }
+  const a = altResults[idx];
+  const card = cards[idx];
+  card.classList.remove('slot-spinning');
+  card.classList.add('slot-settled');
+  card.querySelector('.an').textContent = a.name;
+  card.querySelector('.aca').textContent = a.cal + ' kcal';
+  card.setAttribute('onclick', `pickAlt('${e(a.name)}','${e(a.desc)}',${a.cal},'${a.tags.join(",")}')`);
+  setTimeout(()=>settleAlts(altResults, idx+1, onDone), 150);
+}
+
+// 🔽 Pull-to-Refresh 엔진
+(function initPTR(){
+  let startY = 0, pullDist = 0, isPulling = false;
+  const THRESHOLD = 60;
+  const indicator = document.getElementById('ptrIndicator');
+  const textEl = indicator?.querySelector('.ptr-text');
+  const iconEl = indicator?.querySelector('.ptr-icon');
+
+  function isRecTabActive(){
+    const recSec = document.getElementById('rec');
+    return recSec && recSec.classList.contains('active');
+  }
+
+  document.addEventListener('touchstart', function(ev){
+    if(!isRecTabActive()) return;
+    if(window.scrollY > 5) return;
+    if(_slotBusy) return;
+    startY = ev.touches[0].clientY;
+    isPulling = true;
+    indicator.classList.add('pulling');
+    indicator.classList.remove('ready','refreshing');
+  }, {passive:true});
+
+  document.addEventListener('touchmove', function(ev){
+    if(!isPulling) return;
+    if(window.scrollY > 5){ isPulling = false; indicator.style.height='0'; return; }
+    pullDist = Math.max(0, ev.touches[0].clientY - startY);
+    const progress = Math.min(pullDist / THRESHOLD, 1);
+    const h = Math.min(pullDist * 0.5, 60);
+    indicator.style.height = h + 'px';
+    if(textEl){
+      textEl.textContent = pullDist >= THRESHOLD ? '놓으면 추천!' : '당겨서 추천받기';
+    }
+    if(pullDist >= THRESHOLD){
+      indicator.classList.add('ready');
+    } else {
+      indicator.classList.remove('ready');
+    }
+    if(iconEl){
+      iconEl.style.transform = pullDist >= THRESHOLD ? 'rotate(180deg)' : `rotate(${progress * 180}deg)`;
+    }
+  }, {passive:true});
+
+  document.addEventListener('touchend', function(){
+    if(!isPulling) return;
+    isPulling = false;
+    indicator.classList.remove('pulling','ready');
+    if(pullDist >= THRESHOLD && !_slotBusy){
+      indicator.classList.add('refreshing');
+      if(textEl) textEl.textContent = '추천 중...';
+      indicator.style.height = '40px';
+      setTimeout(()=>{
+        recommend();
+        setTimeout(()=>{
+          indicator.classList.remove('refreshing');
+          indicator.style.height = '0';
+          if(textEl) textEl.textContent = '당겨서 추천받기';
+          if(iconEl) iconEl.style.transform = '';
+        }, 800);
+      }, 200);
+    } else {
+      indicator.style.height = '0';
+      if(iconEl) iconEl.style.transform = '';
+    }
+    pullDist = 0;
+  }, {passive:true});
+})();
+
+
+function setMenu(m){curMenu=m.name;window.curMenuData={...m,recommendedAtDate:todayKey(),recommendedAtTs:Date.now()};document.getElementById('slotMain').textContent=m.name;document.getElementById('recDesc').textContent=m.desc;document.getElementById('recCal').textContent='약 '+m.cal+' kcal';document.getElementById('recTags').innerHTML=m.tags.map(t=>`<span class="rtag">${eh(t)}</span>`).join('');if(menuFirstMode)fetchNearbyMenuRestaurants(m.name);else document.getElementById('menuFirstWrap').style.display='none';}
+function pickAlt(name,desc,cal,tags){curMenu=name;window.curMenuData={name,desc,cal,tags:tags.split(','),recommendedAtDate:todayKey(),recommendedAtTs:Date.now()};document.getElementById('slotMain').textContent=name;document.getElementById('recDesc').textContent=desc;document.getElementById('recCal').textContent='약 '+cal+' kcal';document.getElementById('recTags').innerHTML=tags.split(',').map(t=>`<span class="rtag">${eh(t)}</span>`).join('');rstV();if(menuFirstMode)fetchNearbyMenuRestaurants(name);else document.getElementById('menuFirstWrap').style.display='none';}
 function rstV(){document.getElementById('voteUp').classList.remove('active');document.getElementById('voteDown').classList.remove('active');const fb=document.getElementById('voteFb');fb.className='vfb';fb.textContent='';}
 function vote(up){
   if(!curMenu)return;const fb=document.getElementById('voteFb');
