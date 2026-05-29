@@ -1,12 +1,8 @@
-[
-     {
-       "relation": ["delegate_permission/common.handle_all_urls"],
-       "target": {
-         "namespace": "android_app",
-         "package_name": "io.github.angbeesh_rgb.foodpicker",
-         "sha256_cert_fingerprints": [
-           "여기에_PWABuilder가_생성한_SHA256_지문을_붙여넣으세요"
-         ]
-       }
-     }
-   ]
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.angbeesh_rgb.foodpicker",
+        "sha256_cert_fingerprints": ["58:01:8C:EC:17:2C:79:A2:FB:92:39:FF:FC:8A:5C:84:C4:3A:41:E0:C9:28:1A:BC:93:4E:3A:B1:70:FC:79:1D"]
+      }
+    }]
