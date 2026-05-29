@@ -1,8 +1,8 @@
 [{
-      "relation": ["delegate_permission/common.handle_all_urls"],
-      "target": {
-        "namespace": "android_app",
-        "package_name": "io.github.angbeesh_rgb.foodpicker",
-        "sha256_cert_fingerprints": ["58:01:8C:EC:17:2C:79:A2:FB:92:39:FF:FC:8A:5C:84:C4:3A:41:E0:C9:28:1A:BC:93:4E:3A:B1:70:FC:79:1D"]
-      }
-    }]
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "io.github.angbeesh_rgb.foodpicker",
+    "sha256_cert_fingerprints": ["B8:3D:0C:29:66:ED:72:CA:0D:B2:AE:A2:7A:56:81:14:F7:98:B1:34:40:EB:F0:CD:46:81:8C:3E:BD:67:45:97"]
+  }
+}]
