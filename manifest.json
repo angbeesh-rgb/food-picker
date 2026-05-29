@@ -1,15 +1,19 @@
 {
+  "id": "/food-picker/",
   "name": "오늘 뭐먹지?",
   "short_name": "뭐먹지",
-  "description": "오늘 뭐 먹을지 추천해주는 앱",
+  "description": "메뉴 고민 끝! 균형·다이어트·행복해 모드별로 오늘의 메뉴를 추천하고, 인기 메뉴 순위와 식단일기까지 한 번에 관리하는 메뉴 추천 앱이에요.",
   "start_url": "/food-picker/index.html",
   "scope": "/food-picker/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#FBCFE8",
   "theme_color": "#F9A8D4",
   "orientation": "portrait",
   "lang": "ko",
-  "categories": ["food", "lifestyle"],
+  "dir": "ltr",
+  "categories": ["food", "lifestyle", "health"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "icon-192.png",
@@ -28,6 +32,38 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "오늘의 추천 받기",
+      "short_name": "추천받기",
+      "description": "바로 메뉴를 추천받아요",
+      "url": "/food-picker/index.html?tab=rec",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "인기 메뉴 보기",
+      "short_name": "뭐먹어?",
+      "description": "오늘의 인기 메뉴 순위를 확인해요",
+      "url": "/food-picker/index.html?tab=pop",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshot-1.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "오늘의 메뉴 추천"
+    },
+    {
+      "src": "screenshot-2.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "인기 메뉴 순위"
     }
   ]
 }
