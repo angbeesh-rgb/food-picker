@@ -845,6 +845,24 @@ function toggleTag(el){
     }
   }
   el.classList.toggle('sel');
+  saveCuisinePref();
+}
+// 선호 음식 종류 저장 (선택된 태그의 텍스트 기준)
+function saveCuisinePref(){
+  const sel = Array.from(document.querySelectorAll('#cuisineRow .tag.sel'))
+    .map(t=>t.textContent.replace(/[🍲🍝🥟🍣🍛🌍🍞]/g,'').trim());
+  try{ localStorage.setItem('cuisinePref', JSON.stringify(sel)); }catch(e){}
+}
+// 선호 음식 종류 복원
+function restoreCuisinePref(){
+  let saved=null;
+  try{ const v=localStorage.getItem('cuisinePref'); if(v) saved=JSON.parse(v); }catch(e){}
+  if(!saved || !Array.isArray(saved) || !saved.length) return; // 저장값 없으면 HTML 기본값 유지
+  document.querySelectorAll('#cuisineRow .tag').forEach(t=>{
+    const name = t.textContent.replace(/[🍲🍝🥟🍣🍛🌍🍞]/g,'').trim();
+    if(saved.includes(name)) t.classList.add('sel');
+    else t.classList.remove('sel');
+  });
 }
 function selSpicy(el){
   document.querySelectorAll('.spbtn').forEach(b=>b.classList.remove('sel'));
@@ -2850,9 +2868,10 @@ async function fetchNearbyMenuRestaurants(menuName){
   }
 }
 
-// 페이지 로드 시 매운맛 UI 복원
+// 페이지 로드 시 매운맛 UI + 선호 음식 종류 복원
 window.addEventListener('DOMContentLoaded',()=>{
   try { restoreSpicyUI(); } catch(e){}
+  try { restoreCuisinePref(); } catch(e){}
 });
 
 // 서비스 워커: 망가진 캐시 정리 후 재등록
@@ -2899,6 +2918,7 @@ window.addEventListener('error', e=>{
 try {
   loadLS();
   restoreDislikeToggle();
+  try { restoreCuisinePref(); } catch(e){}
   // 메뉴우선 상태 복원
   if(localStorage.getItem('mwomogji_menufirst')==='1'){
     const toggleEl=document.getElementById('toggleMenuFirst');
