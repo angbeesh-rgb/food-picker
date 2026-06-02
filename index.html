@@ -530,16 +530,17 @@ try {
       <div class="ctitle" style="margin-bottom:6px;font-size:13px">🥬 재료</div>
       <div id="ingList" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:28px"></div>
       <div style="display:flex;gap:8px;margin-bottom:10px">
-        <input class="ai" id="ingInput" placeholder="재료 입력 후 추가" maxlength="50" style="flex:1"/>
+        <input class="ai" id="ingInput" placeholder="재료 입력 후 Enter 또는 추가" maxlength="50" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addIng();}"/>
         <button class="abtn" onclick="addIng()">추가</button>
       </div>
       <div class="ctitle" style="margin-bottom:6px;font-size:13px">👨‍🍳 조리 순서</div>
       <div id="stepList" style="margin-bottom:8px"></div>
       <div style="display:flex;gap:8px;margin-bottom:10px">
-        <textarea id="stepInput" placeholder="조리 순서 한 단계씩 입력" maxlength="200" style="flex:1"></textarea>
-        <button class="abtn" style="align-self:flex-end" onclick="addStep()">추가</button>
+        <textarea id="stepInput" placeholder="조리 순서 입력 후 Enter (줄바꿈은 Shift+Enter)" maxlength="200" style="flex:1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();addStep();}"></textarea>
+        <button class="abtn" id="stepAddBtn" style="align-self:flex-end" onclick="addStep()">추가</button>
       </div>
-      <button class="rbtn" onclick="saveRcp()">💾 레시피 저장</button>
+      <button class="rbtn" id="saveRcpBtn" onclick="saveRcp()">💾 레시피 저장</button>
+      <button class="rbtn" id="cancelEditBtn" onclick="cancelEditRcp()" style="display:none;background:#9CA3AF;margin-top:6px">✖️ 편집 취소</button>
     </div>
   </div>
 </div>
@@ -733,6 +734,8 @@ const DB={
 
 // localStorage 기반 상태
 let mode='normal',meals=[],rcps=[],ings=[],steps=[],curMenu='',dw={},recentRecs=[];
+let editingRcpIdx=-1; // -1이면 신규 등록, 0이상이면 해당 인덱스 레시피 편집 중
+let editingStepIdx=-1; // 조리순서 편집 중인 인덱스 (-1이면 신규 추가)
 
 function todayKey(){
   // 한국 시간(KST, UTC+9) 기준 YYYY-MM-DD
@@ -2047,11 +2050,90 @@ function switchRcp(t,el){document.querySelectorAll('#rcp .stab').forEach(b=>b.cl
 function addIng(){const v=sanitizeUserInput(document.getElementById('ingInput').value,50);if(!v)return;if(ings.length>=50)return;ings.push(v);document.getElementById('ingInput').value='';renderIngs();}
 function renderIngs(){document.getElementById('ingList').innerHTML=ings.map((ig,i)=>`<span class="itag">${eh(ig)} <span onclick="rmIng(${i})" style="cursor:pointer;opacity:0.6">×</span></span>`).join('');}
 function rmIng(i){ings.splice(i,1);renderIngs();}
-function addStep(){const v=sanitizeUserInput(document.getElementById('stepInput').value,200);if(!v)return;if(steps.length>=30)return;steps.push(v);document.getElementById('stepInput').value='';renderSteps();}
-function renderSteps(){document.getElementById('stepList').innerHTML=steps.map((s,i)=>`<div class="step"><div class="stepn">${i+1}</div><div style="flex:1;font-size:12px;color:#888">${eh(s)} <span onclick="rmStep(${i})" style="cursor:pointer;color:#F87171;font-size:11px">삭제</span></div></div>`).join('');}
-function rmStep(i){steps.splice(i,1);renderSteps();}
-function saveRcp(){const n=sanitizeUserInput(document.getElementById('rName').value,40);if(!n){alert('메뉴 이름을 입력해주세요!');return;}if(rcps.length>=100){alert('레시피는 최대 100개까지 등록할 수 있어요.');return;}let c=parseInt(document.getElementById('rCal').value)||0;if(c<0)c=0;if(c>10000)c=10000;const cu=sanitizeUserInput(document.getElementById('rCuisine').value,20);rcps.push({name:n,cal:c,cuisine:cu,ingredients:[...ings],steps:[...steps]});ings=[];steps=[];document.getElementById('rName').value='';document.getElementById('rCal').value='';document.getElementById('ingList').innerHTML='';document.getElementById('stepList').innerHTML='';saveLS();renderRcps();const tabs=document.querySelectorAll('#rcp .stab');switchRcp('list',tabs[0]);tabs[1].classList.remove('active');}
-function renderRcps(){const el=document.getElementById('rcpCards');if(!rcps.length){el.innerHTML='<div class="elog" style="padding:20px 0">등록된 집밥 레시피가 없어요<br><span style="font-size:12px">오른쪽 탭에서 추가해봐요!</span></div>';return;}el.innerHTML=rcps.map((r,i)=>`<div class="rcpcard" id="rc-${i}"><div class="rcpname" onclick="togRcp(${i})"><span>🏠 ${eh(r.name)}</span><span id="rc-arrow-${i}">▼</span></div><div class="rcpmeta">${eh(r.cuisine)} · ${r.cal?r.cal+' kcal':'칼로리 미입력'}</div><div class="rcpdetail" id="rc-detail-${i}">${r.ingredients.length?`<h4>🥬 재료</h4><div>${r.ingredients.map(ig=>`<span class="itag">${eh(ig)}</span>`).join('')}</div>`:''} ${r.steps.length?`<h4>👨‍🍳 조리 순서</h4>${r.steps.map((s,j)=>`<div class="step"><div class="stepn">${j+1}</div><div style="flex:1;font-size:12px">${eh(s)}</div></div>`).join('')}`:''}<div style="display:flex;gap:6px;margin-top:10px">${r.ingredients.length?`<button class="rcpdel" style="background:#FDF2F8;color:#9D174D;border:1.5px solid #FBCFE8;flex:1" onclick="addRecipeIngredientsToShop(${i})">🛒 재료 장보기 담기</button>`:''}<button class="rcpdel" onclick="delRcp(${i})" style="flex:${r.ingredients.length?'0 0 auto':'1'}">🗑️ 삭제</button></div></div></div>`).join('');}
+function addStep(){
+  const v=sanitizeUserInput(document.getElementById('stepInput').value,200);
+  if(!v)return;
+  if(editingStepIdx>=0){
+    // 조리순서 편집 모드
+    steps[editingStepIdx]=v;
+    editingStepIdx=-1;
+    document.getElementById('stepAddBtn').textContent='추가';
+  } else {
+    if(steps.length>=30)return;
+    steps.push(v);
+  }
+  document.getElementById('stepInput').value='';
+  renderSteps();
+}
+function renderSteps(){document.getElementById('stepList').innerHTML=steps.map((s,i)=>`<div class="step"><div class="stepn">${i+1}</div><div style="flex:1;font-size:12px;color:#888">${eh(s)} <span onclick="editStep(${i})" style="cursor:pointer;color:#BE185D;font-size:11px;margin-left:4px">수정</span> <span onclick="rmStep(${i})" style="cursor:pointer;color:#F87171;font-size:11px">삭제</span></div></div>`).join('');}
+function editStep(i){
+  editingStepIdx=i;
+  document.getElementById('stepInput').value=steps[i];
+  document.getElementById('stepInput').focus();
+  document.getElementById('stepAddBtn').textContent='수정';
+}
+function rmStep(i){
+  steps.splice(i,1);
+  if(editingStepIdx===i){editingStepIdx=-1;document.getElementById('stepInput').value='';document.getElementById('stepAddBtn').textContent='추가';}
+  renderSteps();
+}
+function saveRcp(){
+  const n=sanitizeUserInput(document.getElementById('rName').value,40);
+  if(!n){alert('메뉴 이름을 입력해주세요!');return;}
+  let c=parseInt(document.getElementById('rCal').value)||0;if(c<0)c=0;if(c>10000)c=10000;
+  const cu=sanitizeUserInput(document.getElementById('rCuisine').value,20);
+  const rcpData={name:n,cal:c,cuisine:cu,ingredients:[...ings],steps:[...steps]};
+  if(editingRcpIdx>=0){
+    // 편집 모드: 기존 레시피 업데이트
+    rcps[editingRcpIdx]=rcpData;
+  } else {
+    // 신규 등록
+    if(rcps.length>=100){alert('레시피는 최대 100개까지 등록할 수 있어요.');return;}
+    rcps.push(rcpData);
+  }
+  // 초기화
+  resetRcpForm();
+  saveLS();renderRcps();
+  const tabs=document.querySelectorAll('#rcp .stab');switchRcp('list',tabs[0]);tabs[1].classList.remove('active');
+}
+function resetRcpForm(){
+  ings=[];steps=[];editingRcpIdx=-1;editingStepIdx=-1;
+  document.getElementById('rName').value='';
+  document.getElementById('rCal').value='';
+  document.getElementById('rCuisine').value='한식';
+  document.getElementById('ingList').innerHTML='';
+  document.getElementById('stepList').innerHTML='';
+  document.getElementById('stepInput').value='';
+  document.getElementById('ingInput').value='';
+  document.getElementById('saveRcpBtn').textContent='💾 레시피 저장';
+  document.getElementById('stepAddBtn').textContent='추가';
+  document.getElementById('cancelEditBtn').style.display='none';
+  const ct=document.querySelector('#rcp-add .ctitle');if(ct)ct.textContent='📝 레시피 등록';
+}
+function editRcp(i){
+  const r=rcps[i];if(!r)return;
+  editingRcpIdx=i;editingStepIdx=-1;
+  ings=[...(r.ingredients||[])];
+  steps=[...(r.steps||[])];
+  document.getElementById('rName').value=r.name||'';
+  document.getElementById('rCal').value=r.cal||'';
+  document.getElementById('rCuisine').value=r.cuisine||'한식';
+  renderIngs();renderSteps();
+  document.getElementById('saveRcpBtn').textContent='💾 수정 완료';
+  document.getElementById('stepAddBtn').textContent='추가';
+  document.getElementById('cancelEditBtn').style.display='block';
+  const ct=document.querySelector('#rcp-add .ctitle');if(ct)ct.textContent='✏️ 레시피 수정';
+  // 등록 탭으로 전환
+  const tabs=document.querySelectorAll('#rcp .stab');
+  switchRcp('add',tabs[1]);tabs[0].classList.remove('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function cancelEditRcp(){
+  resetRcpForm();
+  const tabs=document.querySelectorAll('#rcp .stab');
+  switchRcp('list',tabs[0]);tabs[1].classList.remove('active');
+}
+function renderRcps(){const el=document.getElementById('rcpCards');if(!rcps.length){el.innerHTML='<div class="elog" style="padding:20px 0">등록된 집밥 레시피가 없어요<br><span style="font-size:12px">오른쪽 탭에서 추가해봐요!</span></div>';return;}el.innerHTML=rcps.map((r,i)=>`<div class="rcpcard" id="rc-${i}"><div class="rcpname" onclick="togRcp(${i})"><span>🏠 ${eh(r.name)}</span><span id="rc-arrow-${i}">▼</span></div><div class="rcpmeta">${eh(r.cuisine)} · ${r.cal?r.cal+' kcal':'칼로리 미입력'}</div><div class="rcpdetail" id="rc-detail-${i}">${r.ingredients.length?`<h4>🥬 재료</h4><div>${r.ingredients.map(ig=>`<span class="itag">${eh(ig)}</span>`).join('')}</div>`:''} ${r.steps.length?`<h4>👨‍🍳 조리 순서</h4>${r.steps.map((s,j)=>`<div class="step"><div class="stepn">${j+1}</div><div style="flex:1;font-size:12px">${eh(s)}</div></div>`).join('')}`:''}<div style="display:flex;gap:6px;margin-top:10px">${r.ingredients.length?`<button class="rcpdel" style="background:#FDF2F8;color:#9D174D;border:1.5px solid #FBCFE8;flex:1" onclick="addRecipeIngredientsToShop(${i})">🛒 재료 담기</button>`:''}<button class="rcpdel" style="background:#EFF6FF;color:#1E40AF;border:1.5px solid #BFDBFE;flex:1" onclick="editRcp(${i})">✏️ 수정</button><button class="rcpdel" onclick="delRcp(${i})" style="flex:1">🗑️ 삭제</button></div></div></div>`).join('');}
 
 // 레시피 재료를 장보기 구매목록에 일괄 추가
 function addRecipeIngredientsToShop(idx){
@@ -2093,7 +2175,7 @@ function showToast(message){
   setTimeout(()=>toast.remove(), 2500);
 }
 function togRcp(i){const d=document.getElementById('rc-detail-'+i);const a=document.getElementById('rc-arrow-'+i);const c=document.getElementById('rc-'+i);const o=d.classList.toggle('show');a.textContent=o?'▲':'▼';c.classList.toggle('exp',o);}
-function delRcp(i){rcps.splice(i,1);saveLS();renderRcps();}
+function delRcp(i){rcps.splice(i,1);if(editingRcpIdx===i){resetRcpForm();}else if(editingRcpIdx>i){editingRcpIdx--;}saveLS();renderRcps();}
 function recHome(){if(!rcps.length){document.getElementById('homeRec').innerHTML='레시피를 먼저 등록해봐요!';return;}const r=rcps[Math.floor(Math.random()*rcps.length)];document.getElementById('homeRec').innerHTML=`<div style="font-size:18px;font-weight:800;color:#7C2D5A;margin-bottom:4px">🏠 ${eh(r.name)}</div><div style="font-size:12px;color:#BE185D;margin-bottom:6px">${eh(r.cuisine)} · ${r.cal?r.cal+' kcal':'칼로리 미입력'}</div>${r.ingredients.length?`<div style="margin-bottom:6px">${r.ingredients.map(ig=>`<span class="itag">${eh(ig)}</span>`).join('')}</div>`:''}${r.steps.length?`<div style="font-size:12px;color:#888">조리 ${r.steps.length}단계</div>`:''}`;}
 function renderLog(){
 const list=document.getElementById('logList');
