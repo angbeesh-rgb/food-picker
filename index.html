@@ -17,7 +17,7 @@
 <link rel="manifest" href="manifest.json"/>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#FFF9FB;color:#1a1a1a;max-width:430px;margin:0 auto;min-height:100vh;overscroll-behavior-y:none;-webkit-overflow-scrolling:touch}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#FFF9FB;color:#1a1a1a;max-width:430px;margin:0 auto;min-height:100vh;overscroll-behavior-y:none;-webkit-overflow-scrolling:touch;overflow-x:hidden}
 .app{padding:12px;padding-bottom:80px}
 .hdr{text-align:center;padding:20px 0 10px}
 .hdr h1{font-size:22px;font-weight:700;color:#1a1a1a}
@@ -147,17 +147,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .spbtn{flex:1;padding:9px 4px;border-radius:10px;border:1.5px solid #FCE7F3;background:#FFF9FB;font-size:11px;font-weight:600;cursor:pointer;text-align:center;color:#888;transition:all 0.2s;min-height:36px}
 .spbtn.sel{background:#FEF3C7;border-color:#FCD34D;color:#92400E}
 /* 식단일기 */
-.li{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #FCE7F3}
+.li{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #FCE7F3;gap:8px}
 .li:last-child{border-bottom:none}
-.lm{font-size:14px;font-weight:700;color:#1a1a1a}
+.li>div:first-child{min-width:0;flex:1}
+.lm{font-size:14px;font-weight:700;color:#1a1a1a;word-break:break-word}
 .linfo{font-size:11px;color:#888;margin-top:2px}
 .lr{display:flex;align-items:center;gap:8px;flex-shrink:0}
-.lcal{font-size:13px;font-weight:700;color:#F87171}
-.db{width:28px;height:28px;border-radius:50%;border:1.5px solid #FBCFE8;background:#FDF2F8;color:#BE185D;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.ar{display:flex;gap:8px;margin-top:8px}
-.ai{flex:1;padding:10px 12px;border-radius:10px;border:1.5px solid #FCE7F3;background:#FFF9FB;font-size:13px;color:#1a1a1a;min-height:44px}
+.lcal{font-size:13px;font-weight:700;color:#F87171;white-space:nowrap}
+.db{width:28px;height:28px;border-radius:50%;border:1.5px solid #FBCFE8;background:#FDF2F8;color:#BE185D;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ar{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.ai{flex:1 1 120px;min-width:0;padding:10px 12px;border-radius:10px;border:1.5px solid #FCE7F3;background:#FFF9FB;font-size:13px;color:#1a1a1a;min-height:44px}
 .ai::placeholder{color:#bbb}
-.abtn{padding:10px 14px;border-radius:10px;background:#FBCFE8;border:none;font-size:13px;font-weight:700;color:#9D174D;cursor:pointer;min-height:44px}
+.abtn{padding:10px 14px;border-radius:10px;background:#FBCFE8;border:none;font-size:13px;font-weight:700;color:#9D174D;cursor:pointer;min-height:44px;flex-shrink:0}
 /* 통계 */
 .strow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .stbox{background:#FFF9FB;border-radius:12px;padding:12px;text-align:center;border:1px solid #FCE7F3}
@@ -624,7 +625,7 @@ try {
       <select id="mealType"><option>🌅 아침</option><option selected>☀️ 점심</option><option>🌙 저녁</option><option>🍪 간식</option></select>
       <div class="ar">
         <input class="ai" id="addMealName" placeholder="음식 이름" maxlength="40"/>
-        <input class="ai" id="addMealCal" placeholder="칼로리" type="number" min="0" max="10000" maxlength="5" style="max-width:90px"/>
+        <input class="ai" id="addMealCal" placeholder="칼로리" type="number" min="0" max="10000" maxlength="5" style="flex:0 1 90px;max-width:110px"/>
         <button class="abtn" onclick="addMeal()">추가</button>
       </div>
     </div>
