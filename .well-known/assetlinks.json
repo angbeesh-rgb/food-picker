@@ -3,6 +3,8 @@
   "target": {
     "namespace": "android_app",
     "package_name": "io.github.angbeesh_rgb.foodpicker",
-    "sha256_cert_fingerprints": ["6F:07:73:DD:2E:09:31:16:89:F2:C3:31:4F:D6:6C:F3:60:C9:61:19:5F:CC:C9:57:58:85:5B:28:4A:85:6A:05"]
+    "sha256_cert_fingerprints": [
+      "89:B1:66:59:B1:35:45:58:C5:E4:A4:39:05:C5:FD:DB:82:78:4A:D9:FF:1D:A9:B7:13:F3:FC:F2:73:FD:95:28"
+    ]
   }
 }]
