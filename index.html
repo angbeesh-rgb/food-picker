@@ -2436,12 +2436,16 @@ function getLocation(){
         } else if(err && err.code === 2){
           msg = '📍 현재 위치를 찾을 수 없어요. 잠시 후 다시 시도해주세요';
         } else if(err && err.code === 3){
-          msg = '📍 위치 확인 시간 초과. 다음에 다시 시도해주세요';
+          msg = '📍 위치 확인 시간이 걸려요. 날씨·식당 기능만 잠시 제한되고 메뉴 추천은 정상 작동해요';
         }
         showLocationToast(msg, 'warn');
         reject(msg);
       },
-      {timeout:10000}
+      {
+        enableHighAccuracy:false,  // 네트워크 기반 빠른 위치 (식당/날씨엔 충분, GPS 안 켜서 빠름)
+        timeout:15000,             // 15초로 여유
+        maximumAge:300000          // 5분 이내 캐시된 위치 재사용 → 타임아웃 대폭 감소
+      }
     );
   });
 }
